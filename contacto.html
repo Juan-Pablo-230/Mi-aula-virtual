@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Contacto — Mi Aula Virtual</title>
+    <link rel="stylesheet" href="assets/css/landing.css">
+</head>
+<body>
+<header class="landing-header">
+    <a href="index.html" class="brand">🎓 Mi Aula Virtual</a>
+    <nav>
+        <a href="servicios.html">Servicios</a>
+        <a href="contacto.html">Contacto</a>
+        <button class="btn-login" onclick="location.href='index.html'">Iniciar sesión</button>
+    </nav>
+</header>
+<main class="landing-main">
+    <h1>Contacto</h1>
+    <form onsubmit="event.preventDefault();alert('Mensaje enviado');">
+        <label>Nombre <input type="text" required></label>
+        <label>Correo <input type="email" required></label>
+        <label>Mensaje <textarea required></textarea></label>
+        <button class="btn-primario">Enviar</button>
+    </form>
+</main>
+</body>
+</html>

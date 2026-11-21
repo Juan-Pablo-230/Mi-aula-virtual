@@ -1,0 +1,2301 @@
+:root {
+    --azul-1: #0a2647;
+    --azul-2: #144272;
+    --azul-3: #205295;
+    --celeste: #2c74b3;
+    --vidrio: rgba(255, 255, 255, 0.08);
+    --borde-vidrio: rgba(255, 255, 255, 0.15);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, var(--azul-1), var(--azul-2));
+    color: #eaf2ff;
+    min-height: 100vh;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(0.75rem);
+    border-bottom: 0.0625rem solid var(--borde-vidrio);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.brand {
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+    font-size: 1.15rem;
+}
+
+.top-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.btn-top {
+    color: #cfe2ff;
+    text-decoration: none;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+}
+.btn-top:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+/* ============================================================
+   PERFIL DROPDOWN
+   ============================================================ */
+.perfil-dropdown {
+    position: relative;
+}
+
+.perfil-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+}
+
+.perfil-texto {
+    text-align: right;
+}
+.perfil-texto strong {
+    display: block;
+    font-size: 0.9rem;
+}
+.perfil-texto small {
+    color: #cfe2ff;
+    font-size: 0.75rem;
+}
+
+/* Avatar (foto de perfil) */
+.avatar {
+    width: 2.375rem;
+    height: 2.375rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 0.125rem solid var(--borde-vidrio);
+    background: var(--azul-2);
+    flex-shrink: 0;
+}
+
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 110%;
+    min-width: 13.75rem;
+    background: var(--azul-2);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.625rem;
+    overflow: hidden;
+    box-shadow: 0 0.625rem 1.5625rem rgba(0, 0, 0, 0.4);
+    z-index: 60;
+}
+.dropdown-menu.oculto {
+    display: none;
+}
+.dropdown-menu a {
+    display: block;
+    padding: 0.7rem 1rem;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+.dropdown-menu a:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================
+   MENÚ LATERAL
+   ============================================================ */
+.menu-lateral {
+    position: fixed;
+    left: 0;
+    top: 3.75rem;
+    bottom: 0;
+    width: 13.75rem;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(0.625rem);
+    border-right: 0.0625rem solid var(--borde-vidrio);
+    padding: 1rem 0;
+    overflow-y: auto;
+}
+.menu-lateral nav {
+    display: flex;
+    flex-direction: column;
+}
+.menu-lateral a {
+    color: #cfe2ff;
+    text-decoration: none;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.95rem;
+    border-left: 0.1875rem solid transparent;
+}
+.menu-lateral a:hover,
+.menu-lateral a.activo {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-left-color: var(--celeste);
+}
+
+/* ============================================================
+   CONTENIDO PRINCIPAL
+   ============================================================ */
+.contenido-principal {
+    margin-left: 15rem;
+    padding: 2rem 1.5rem;
+    max-width: calc(100% - 15rem);
+}
+.contenido-principal h1 {
+    margin-bottom: 1.2rem;
+    font-size: 1.7rem;
+}
+
+/* ============================================================
+   PANELES DE VIDRIO
+   ============================================================ */
+.panel-vidrio {
+    background: var(--vidrio);
+    backdrop-filter: blur(0.875rem);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.875rem;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+.panel-vidrio h2,
+.panel-vidrio h3 {
+    margin-bottom: 1rem;
+}
+
+/* ============================================================
+   ALERTAS
+   ============================================================ */
+.alerta {
+    padding: 0.85rem 1rem;
+    border-radius: 0.625rem;
+    margin: 0.75rem 0;
+}
+.alerta.info {
+    background: rgba(44, 116, 179, 0.3);
+    border-left: 0.25rem solid var(--celeste);
+}
+.alerta.warn {
+    background: rgba(202, 138, 4, 0.3);
+    border-left: 0.25rem solid #ca8a04;
+}
+.alerta.danger {
+    background: rgba(185, 28, 28, 0.3);
+    border-left: 0.25rem solid #b91c1c;
+}
+.alerta-libre-global {
+    background: rgba(220, 38, 38, 0.85);
+    color: #fff;
+    padding: 0.85rem 1rem;
+    font-weight: 600;
+    text-align: center;
+    animation: pulso 2s infinite;
+}
+@keyframes pulso {
+    50% {
+        opacity: 0.85;
+    }
+}
+
+/* ============================================================
+   BOTONES
+   ============================================================ */
+.btn-primario,
+.btn-secundario,
+.btn-peligro {
+    padding: 0.55rem 1rem;
+    border-radius: 0.625rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: transform 0.15s, opacity 0.15s;
+    text-decoration: none;
+    display: inline-block;
+    font-family: inherit;
+}
+.btn-primario {
+    background: var(--celeste);
+    color: #fff;
+}
+.btn-secundario {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+.btn-peligro {
+    background: #b91c1c;
+    color: #fff;
+}
+.btn-peligro-sm {
+    background: #b91c1c;
+    color: #fff;
+    border: none;
+    border-radius: 0.375rem;
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.btn-primario:hover,
+.btn-secundario:hover,
+.btn-peligro:hover {
+    transform: translateY(-0.0625rem);
+    opacity: 0.92;
+}
+
+.btn-primario:disabled,
+.btn-secundario:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ============================================================
+   TABLAS
+   ============================================================ */
+.tabla-alumnos,
+.tabla-asistencia,
+.tabla-calificaciones {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+.tabla-alumnos th,
+.tabla-asistencia th,
+.tabla-calificaciones th {
+    text-align: left;
+    padding: 0.6rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 0.0625rem solid var(--borde-vidrio);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+.tabla-alumnos td,
+.tabla-asistencia td,
+.tabla-calificaciones td {
+    padding: 0.55rem;
+    border-bottom: 0.0625rem solid rgba(255, 255, 255, 0.06);
+}
+.fila-libre {
+    background: rgba(185, 28, 28, 0.12);
+}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+.badge {
+    padding: 0.15rem 0.55rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    background: var(--azul-3);
+    color: #fff;
+    display: inline-block;
+}
+.badge.ok { background: #15803d; }
+.badge.warn { background: #ca8a04; }
+.badge.danger { background: #b91c1c; }
+
+.chip-nota {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    margin: 0.1rem;
+    border-radius: 0.375rem;
+    background: var(--azul-3);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+.modal-fondo {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 1rem;
+}
+.modal-fondo.oculto {
+    display: none;
+}
+
+.modal-caja {
+    background: var(--azul-2);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.875rem;
+    padding: 1.5rem 2rem;
+    min-width: 21.25rem;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 1.25rem 2.5rem rgba(0, 0, 0, 0.5);
+}
+.modal-caja label {
+    display: block;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+.modal-caja input,
+.modal-caja select,
+.modal-caja textarea {
+    width: 100%;
+    padding: 0.55rem;
+    margin-top: 0.3rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+.modal-acciones {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+}
+
+/* ============================================================
+   FEED DE PUBLICACIONES
+   ============================================================ */
+.feed-publicaciones {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.publicacion h3 {
+    margin-bottom: 0.3rem;
+}
+.publicacion small {
+    color: #cfe2ff;
+    font-size: 0.8rem;
+}
+.publicacion p {
+    margin: 0.75rem 0;
+    line-height: 1.5;
+}
+
+/* ============================================================
+   ADMIN: GRIDS
+   ============================================================ */
+.grid-admin,
+.grid-estadisticas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+.grid-bibliografia {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+/* ============================================================
+   CURSOS Y DIVISIONES
+   ============================================================ */
+.curso-card {
+    margin: 1rem 0;
+}
+.divisiones-lista {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+}
+.division-chip {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.4rem 0.7rem;
+    border-radius: 0.625rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    border: 0.0625rem solid var(--borde-vidrio);
+}
+.form-division {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+    flex-wrap: wrap;
+}
+.form-division input,
+.form-division select {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-family: inherit;
+}
+
+/* ============================================================
+   ESTADÍSTICAS
+   ============================================================ */
+.stat-card {
+    text-align: center;
+    padding: 1.5rem 1rem;
+}
+.stat-card h3 {
+    font-size: 2.2rem;
+    color: #7dd3fc;
+    margin-bottom: 0.3rem;
+}
+.stat-card p {
+    color: #cfe2ff;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+.login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+.login-wrapper .panel-vidrio {
+    max-width: 28rem;
+    width: 100%;
+}
+.login-wrapper form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.login-wrapper input {
+    padding: 0.7rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+}
+
+/* ============================================================
+   MENSAJES
+   ============================================================ */
+.layout-mensajes {
+    display: grid;
+    grid-template-columns: 17.5rem 1fr;
+    gap: 1rem;
+}
+.contacto {
+    display: block;
+    padding: 0.7rem;
+    margin: 0.3rem 0;
+    border-radius: 0.5rem;
+    color: #fff;
+    text-decoration: none;
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.9rem;
+    transition: background 0.15s;
+}
+.contacto.activo,
+.contacto:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Contacto con avatar (lista y modal) */
+.contacto-con-avatar {
+    display: flex !important;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.6rem 0.7rem !important;
+}
+.contacto-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: var(--azul-2);
+}
+.contacto-texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.contacto-texto strong {
+    font-size: 0.88rem;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.contacto-texto small {
+    font-size: 0.75rem;
+    color: #a5c3e8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 25rem;
+}
+.chat-mensajes {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    max-height: 28rem;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+    margin-bottom: 0.75rem;
+}
+.burbuja {
+    padding: 0.6rem 1rem;
+    margin: 0.4rem 0;
+    border-radius: 0.75rem;
+    max-width: 70%;
+    word-wrap: break-word;
+    font-size: 0.92rem;
+    line-height: 1.4;
+}
+.burbuja.mia {
+    background: var(--celeste);
+    color: #fff;
+    align-self: flex-end;
+    margin-left: auto;
+    border-bottom-right-radius: 0.25rem;
+}
+.burbuja.suya {
+    background: #4a5568;
+    color: #f1f5f9;
+    align-self: flex-start;
+    margin-right: auto;
+    border-bottom-left-radius: 0.25rem;
+}
+.chat-form {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 0.0625rem solid var(--borde-vidrio);
+    margin-top: auto;
+}
+.chat-form input {
+    flex: 1;
+    padding: 0.7rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-family: inherit;
+}
+
+/* ============================================================
+   PROMEDIO Y ASISTENCIA
+   ============================================================ */
+.promedio-valor {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #7dd3fc;
+}
+.pendiente {
+    color: #fbbf24;
+    font-style: italic;
+}
+
+.config-regla {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
+    margin-bottom: 1rem;
+}
+.config-regla input {
+    width: 4.375rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+}
+
+/* ============================================================
+   PIE DE PÁGINA
+   ============================================================ */
+.pie-pagina {
+    text-align: center;
+    padding: 1.5rem;
+    color: #a5c3e8;
+    font-size: 0.8rem;
+    margin-left: 15rem;
+}
+
+/* ============================================================
+   TOGGLE LISTA / CUADRÍCULA
+   ============================================================ */
+.header-seccion {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1.5rem 0 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.header-seccion h2 {
+    margin: 0;
+}
+.toggle-vista {
+    display: flex;
+    gap: 0.4rem;
+}
+.btn-toggle {
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfe2ff;
+    border: 0.0625rem solid var(--borde-vidrio);
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+.btn-toggle.activo {
+    background: var(--celeste);
+    color: #fff;
+    border-color: var(--celeste);
+}
+
+/* ============================================================
+   VISTA GRID / LISTA
+   ============================================================ */
+.vista-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.vista-grid .panel-vidrio {
+    margin: 0;
+}
+.vista-grid .curso-card .divisiones-lista {
+    flex-wrap: wrap;
+}
+.vista-grid .form-division {
+    flex-direction: column;
+}
+.vista-grid .form-division input,
+.vista-grid .form-division select {
+    width: 100%;
+}
+
+.vista-lista .materia-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: 0.5rem 0;
+    padding: 0.85rem 1.25rem;
+}
+.vista-grid .materia-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+/* ============================================================
+   TABLA DE ASIGNACIONES DOCENTE
+   ============================================================ */
+.tabla-asignaciones {
+    max-height: 25rem;
+    overflow: auto;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+}
+.tabla-asignaciones input[type="checkbox"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    cursor: pointer;
+}
+
+/* ============================================================
+   SUBMENÚ DE ADMINISTRACIÓN
+   ============================================================ */
+.admin-nav {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0 0 1.5rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.75rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    backdrop-filter: blur(0.625rem);
+}
+.admin-nav-item {
+    padding: 0.6rem 1.1rem;
+    border-radius: 0.625rem;
+    text-decoration: none;
+    color: #cfe2ff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: transparent;
+    border: 0.0625rem solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.admin-nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-color: var(--borde-vidrio);
+}
+.admin-nav-item.activo {
+    background: var(--celeste);
+    color: #fff;
+    border-color: var(--celeste);
+    box-shadow: 0 0.125rem 0.75rem rgba(44, 116, 179, 0.35);
+}
+.admin-nav + h1,
+.admin-nav + h2 {
+    margin-top: 0;
+}
+
+/* ============================================================
+   DETALLE DE TAREA
+   ============================================================ */
+.tarea-meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    color: #cfe2ff;
+    font-size: 0.9rem;
+}
+.tarea-meta strong {
+    color: #fff;
+}
+
+/* ============================================================
+   FORMULARIOS GLOBALES
+   ============================================================ */
+main form label {
+    display: block;
+    margin: 0.85rem 0;
+    color: #eaf2ff;
+    font-weight: 500;
+    font-size: 0.92rem;
+}
+main form input[type="text"],
+main form input[type="email"],
+main form input[type="password"],
+main form input[type="number"],
+main form input[type="date"],
+main form input[type="datetime-local"],
+main form input[type="file"],
+main form input[type="search"],
+main form textarea,
+main form select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    margin-top: 0.35rem;
+    border-radius: 0.625rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+main form input:focus,
+main form textarea:focus,
+main form select:focus {
+    outline: none;
+    border-color: var(--celeste);
+    background: rgba(255, 255, 255, 0.1);
+}
+main form input::placeholder,
+main form textarea::placeholder {
+    color: rgba(207, 226, 255, 0.55);
+}
+main form textarea {
+    resize: vertical;
+    min-height: 5rem;
+}
+main form select option {
+    background: var(--azul-2);
+    color: #fff;
+}
+main form label input[type="checkbox"],
+main form label input[type="radio"] {
+    width: auto;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+main form button[type="submit"],
+main form .btn-primario {
+    margin-top: 1rem;
+}
+
+.form-acciones {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Inputs de archivo */
+.modal-caja input[type="file"],
+.panel-vidrio input[type="file"] {
+    padding: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.0625rem dashed var(--borde-vidrio);
+    border-radius: 0.625rem;
+    width: 100%;
+    color: #cfe2ff;
+}
+.modal-caja input[type="file"]::file-selector-button,
+.panel-vidrio input[type="file"]::file-selector-button {
+    padding: 0.4rem 0.9rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: var(--celeste);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 0.75rem;
+    transition: opacity 0.15s;
+}
+.modal-caja input[type="file"]::file-selector-button:hover,
+.panel-vidrio input[type="file"]::file-selector-button:hover {
+    opacity: 0.9;
+}
+
+/* Barra de progreso */
+.progreso-barra {
+    width: 100%;
+    height: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    margin-bottom: 0.4rem;
+    position: relative;
+}
+.progreso-fill {
+    height: 100%;
+    width: 30%;
+    background: linear-gradient(90deg, #2c74b3, #7dd3fc, #2c74b3);
+    background-size: 200% 100%;
+    border-radius: 0.25rem;
+    animation: progreso-mover 1.2s linear infinite;
+}
+@keyframes progreso-mover {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* ============================================================
+   TARJETAS DE BIBLIOGRAFÍA
+   ============================================================ */
+.grid-bibliografia {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.bib-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 1.25rem;
+    transition: transform 0.15s;
+}
+.bib-card:hover {
+    transform: translateY(-0.125rem);
+}
+.bib-icono {
+    font-size: 2.2rem;
+    margin-bottom: 0.5rem;
+}
+.bib-card h4 {
+    font-size: 0.95rem;
+    word-break: break-word;
+    margin-bottom: 0.35rem;
+    line-height: 1.3;
+}
+.bib-card small {
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+/* ============================================================
+   GRID DE MATERIAS
+   ============================================================ */
+.grid-materias {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.materia-item-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    transition: transform 0.15s, background 0.15s;
+    cursor: pointer;
+}
+.materia-item-link:hover {
+    transform: translateY(-0.1875rem);
+    background: rgba(255, 255, 255, 0.12);
+}
+.materia-item-icono {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+.materia-item-link h3 {
+    font-size: 1.15rem;
+    margin-bottom: 0.35rem;
+    color: #fff;
+}
+.materia-item-link small {
+    font-size: 0.82rem;
+    color: #cfe2ff;
+}
+
+/* ============================================================
+   PESTAÑAS DE MATERIA
+   ============================================================ */
+.tabs-materia {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.5rem;
+    border-radius: 0.75rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+}
+.tab-materia {
+    padding: 0.65rem 1.25rem;
+    border-radius: 0.625rem;
+    text-decoration: none;
+    color: #cfe2ff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: background 0.15s, color 0.15s;
+}
+.tab-materia:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+.tab-materia.activo {
+    background: var(--celeste);
+    color: #fff;
+    box-shadow: 0 0.125rem 0.75rem rgba(44, 116, 179, 0.35);
+}
+
+.division-bloque {
+    border-left: 0.25rem solid var(--celeste);
+}
+.division-bloque h2 {
+    color: #fff;
+}
+.division-bloque h3 {
+    border-bottom: 0.0625rem solid var(--borde-vidrio);
+    padding-bottom: 0.5rem;
+}
+
+/* ============================================================
+   GRID DE ASISTENCIA — CARDS CUADRADAS TÁCTILES
+   ============================================================ */
+.asistencia-leyenda {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.leyenda-color {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.25rem;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+    border: 0.0625rem solid var(--borde-vidrio);
+}
+.leyenda-color.presente {
+    background: rgba(34, 197, 94, 0.5);
+    border-color: #16a34a;
+}
+.leyenda-color.ausente {
+    background: rgba(220, 38, 38, 0.5);
+    border-color: #b91c1c;
+}
+.leyenda-color.libre {
+    background: rgba(202, 138, 4, 0.5);
+    border-color: #ca8a04;
+}
+
+.asistencia-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
+/* ============================================================
+   CARD DE ALUMNO — CUADRADA, TAPPABLE, SIN BORDES REDONDEADOS
+   ============================================================ */
+.alumno-card {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+    text-align: center;
+    background: rgba(34, 197, 94, 0.15);
+    border: 0.125rem solid rgba(34, 197, 94, 0.4);
+    transition: transform 0.12s ease, background 0.15s ease,
+                border-color 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    color: #fff;
+    font-family: inherit;
+    box-shadow: inset 0 0 1.25rem rgba(34, 197, 94, 0.08);
+}
+
+.alumno-card.presente {
+    background: rgba(34, 197, 94, 0.18);
+    border-color: rgba(34, 197, 94, 0.5);
+    box-shadow: inset 0 0 1.5rem rgba(34, 197, 94, 0.1);
+}
+
+.alumno-card.ausente {
+    background: rgba(220, 38, 38, 0.28);
+    border-color: #dc2626;
+    box-shadow: inset 0 0 1.5rem rgba(220, 38, 38, 0.25),
+                0 0 0.75rem rgba(220, 38, 38, 0.3);
+}
+
+.alumno-card.libre {
+    background: rgba(202, 138, 4, 0.28);
+    border-color: #ca8a04;
+    box-shadow: inset 0 0 1.5rem rgba(202, 138, 4, 0.25);
+    cursor: not-allowed;
+}
+
+.alumno-card:hover:not(.libre) {
+    transform: translateY(-0.125rem);
+    box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.35),
+                inset 0 0 1.5rem rgba(255, 255, 255, 0.05);
+}
+
+.alumno-card:active:not(.libre) {
+    transform: scale(0.96);
+}
+
+.alumno-card-nombre {
+    font-weight: 700;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    margin-bottom: 0.5rem;
+    color: #fff;
+    word-break: break-word;
+    text-shadow: 0 0.0625rem 0.125rem rgba(0, 0, 0, 0.3);
+}
+
+.alumno-card-info {
+    font-size: 0.8rem;
+    color: #dbeafe;
+    line-height: 1.3;
+}
+
+.alumno-card.ausente .alumno-card-info {
+    color: #fecaca;
+}
+
+.alumno-card.libre .alumno-card-info {
+    color: #fde68a;
+    font-weight: 700;
+}
+
+.alumno-card .tope-personal {
+    color: #fbbf24;
+    font-weight: 700;
+    margin-left: 0.15rem;
+    cursor: help;
+}
+
+/* Botones dentro de la card */
+.alumno-card .btn-tope-alumno,
+.alumno-card .btn-quitar-libre {
+    position: absolute;
+    bottom: 0.35rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.18rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: 0.375rem;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+
+.alumno-card .btn-tope-alumno {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+}
+
+.alumno-card .btn-quitar-libre {
+    background: #ca8a04;
+    color: #fff;
+    font-weight: 700;
+}
+
+.alumno-card .btn-tope-alumno:hover,
+.alumno-card .btn-quitar-libre:hover {
+    opacity: 0.85;
+}
+
+/* ============================================================
+   BOTÓN GUARDAR ASISTENCIA (grande, al pie)
+   ============================================================ */
+.asistencia-guardar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    margin-top: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.875rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    position: sticky;
+    bottom: 1rem;
+    z-index: 10;
+    backdrop-filter: blur(0.5rem);
+}
+
+.btn-grande {
+    padding: 0.85rem 2.5rem;
+    font-size: 1.05rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.25rem 1rem rgba(44, 116, 179, 0.4);
+}
+
+.btn-grande:hover:not(:disabled) {
+    transform: translateY(-0.125rem);
+    box-shadow: 0 0.5rem 1.5rem rgba(44, 116, 179, 0.5);
+}
+
+.btn-grande:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ============================================================
+   RESUMEN DE ASISTENCIA DEL ALUMNO
+   ============================================================ */
+.asistencia-resumen-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.resumen-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.625rem;
+    padding: 1rem;
+    font-size: 0.9rem;
+    transition: transform 0.15s;
+}
+
+.resumen-card.libre {
+    background: rgba(202, 138, 4, 0.15);
+    border-color: #ca8a04;
+}
+
+.resumen-card strong {
+    color: #7dd3fc;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+
+.resumen-card.libre strong {
+    color: #fde68a;
+}
+
+/* ============================================================
+   TOAST DE NOTIFICACIÓN
+   ============================================================ */
+.toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1.25rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #fff;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.4);
+    z-index: 9999;
+    max-width: 24rem;
+    will-change: transform, opacity;
+    contain: layout style;
+    isolation: isolate;
+    pointer-events: none;
+    animation: toast-in 0.3s ease;
+}
+.toast.oculto { display: none; }
+.toast.toast-ok {
+    background: #15803d;
+    border-left: 0.25rem solid #16a34a;
+}
+.toast.toast-error {
+    background: #b91c1c;
+    border-left: 0.25rem solid #dc2626;
+}
+.toast #toastIcono { font-size: 1.2rem; }
+
+/* ============================================================
+   LABEL CON CHECKBOX EN LÍNEA (con wrap si no entra)
+   ============================================================ */
+.label-checkbox {
+    display: flex !important;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.85rem 0;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    color: #eaf2ff;
+    cursor: pointer;
+}
+
+.label-checkbox input[type="checkbox"] {
+    flex-shrink: 0;
+    margin: 0;
+    width: 1.125rem;
+    height: 1.125rem;
+    cursor: pointer;
+}
+
+.label-checkbox span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ============================================================
+   PANTALLA DE LOGIN / PRIMER INGRESO
+   ============================================================ */
+.login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.login-wrapper .panel-vidrio {
+    max-width: 28rem;
+    width: 100%;
+    padding: 2rem;
+}
+
+.login-wrapper h2 {
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.login-wrapper label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #eaf2ff;
+}
+
+.login-wrapper input[type="text"],
+.login-wrapper input[type="email"],
+.login-wrapper input[type="password"] {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 1rem;
+    border-radius: 0.625rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.login-wrapper input:focus {
+    outline: none;
+    border-color: var(--celeste);
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 0.1875rem rgba(44, 116, 179, 0.25);
+}
+
+.login-wrapper input[readonly] {
+    background: rgba(255, 255, 255, 0.03);
+    color: #cfe2ff;
+    cursor: not-allowed;
+}
+
+.login-wrapper input::placeholder {
+    color: rgba(207, 226, 255, 0.5);
+}
+
+/* ===== Adjuntos en chat ===== */
+.chat-adjunto {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.25);
+    color: #cfe2ff;
+    text-decoration: none;
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+.chat-adjunto:hover { background: rgba(0, 0, 0, 0.4); color: #fff; }
+
+.chat-adjunto-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 0.0625rem solid var(--borde-vidrio);
+    cursor: pointer;
+    color: #cfe2ff;
+    font-size: 0.9rem;
+}
+
+.chat-adjunto-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-adjunto-nombre {
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===== Filtros de estadísticas ===== */
+.stat-filtros form {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.stat-filtros label { margin: 0; }
+
+/* ===== Grid de gráficos ===== */
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.chart-container {
+    min-height: 20rem;
+    display: flex;
+    flex-direction: column;
+}
+.chart-container canvas {
+    max-height: 18rem;
+    flex: 1;
+}
+
+/* ===== Instituciones (para cuando se agregue el listado) ===== */
+.institucion-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    margin: 0.5rem 0;
+}
+
+/* ===== Chat: contenedor scrollable de mensajes ===== */
+.chat-mensajes {
+    flex: 1;
+    max-height: 28rem;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+    margin-bottom: 0.75rem;
+}
+
+/* ===== Chat: adjuntos ===== */
+.chat-adjunto {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.25);
+    color: #cfe2ff;
+    text-decoration: none;
+    font-size: 0.8rem;
+    word-break: break-all;
+    max-width: 100%;
+}
+.chat-adjunto:hover {
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+}
+
+.chat-adjunto-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 0.0625rem solid var(--borde-vidrio);
+    cursor: pointer;
+    color: #cfe2ff;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+.chat-adjunto-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+.chat-adjunto-nombre {
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+}
+.chat-adjunto-nombre:empty {
+    display: none;
+}
+
+/* ============================================================
+   INPUT DE FECHA NATIVO (asistencia) — estilo del theme
+   ============================================================ */
+input[type="date"] {
+    font-family: inherit;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.625rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #eaf2ff;
+    font-size: 0.95rem;
+    cursor: pointer;
+    color-scheme: dark;
+}
+input[type="date"]:focus {
+    outline: none;
+    border-color: var(--celeste);
+    background: rgba(255, 255, 255, 0.1);
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.85) sepia(0.3) saturate(2) hue-rotate(180deg);
+    opacity: 0.8;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* ============================================================
+   BADGE DE MENSAJES SIN LEER (barra superior)
+   ============================================================ */
+.btn-top-mensajes {
+    position: relative;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.35rem;
+}
+.badge-no-leido-header {
+    background: #dc2626;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.75rem;
+    min-width: 1.15rem;
+    text-align: center;
+    line-height: 1.2;
+    box-shadow: 0 0 0 0.125rem rgba(220, 38, 38, 0.35);
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================================
+   META DE LA BURBUJA (fecha + hora, chiquitas a la derecha)
+   ============================================================ */
+.burbuja-texto {
+    word-wrap: break-word;
+}
+
+.burbuja-adjunto {
+    margin-top: 0.4rem;
+}
+
+.burbuja-meta {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+    font-size: 0.65rem;
+    opacity: 0.65;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01rem;
+    white-space: nowrap;
+}
+
+.burbuja-fecha {
+    /* formato dd/mm/yyyy */
+}
+
+.burbuja-hora {
+    /* formato HH:MM */
+}
+
+.burbuja.mia .burbuja-meta {
+    color: rgba(255, 255, 255, 0.9);
+}
+.burbuja.suya .burbuja-meta {
+    color: rgba(241, 245, 249, 0.75);
+}
+
+/* ============================================================
+   BOTÓN ENVIAR EN ESTADO CARGANDO
+   ============================================================ */
+.btn-primario.btn-cargando {
+    cursor: wait;
+    opacity: 0.75;
+    position: relative;
+    padding-right: 2.25rem;
+}
+.btn-primario.btn-cargando::after {
+    content: '';
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    width: 0.85rem;
+    height: 0.85rem;
+    margin-top: -0.425rem;
+    border: 0.125rem solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spinner-btn 0.7s linear infinite;
+}
+
+/* ============================================================
+   MENÚ CONTEXTUAL DE MENSAJES (click derecho)
+   ============================================================ */
+.menu-contextual {
+    position: fixed;
+    z-index: 500;
+    min-width: 13rem;
+    background: var(--azul-2);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.5rem;
+    padding: 0.35rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.menu-contextual.oculto {
+    display: none;
+}
+.menu-contextual-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border: none;
+    background: transparent;
+    color: #eaf2ff;
+    font-family: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.menu-contextual-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.menu-contextual-item.peligro {
+    color: #fca5a5;
+}
+.menu-contextual-item.peligro:hover {
+    background: rgba(220, 38, 38, 0.2);
+    color: #fff;
+}
+
+/* ============================================================
+   LEYENDA "MENSAJE EDITADO" (dentro de burbuja-meta)
+   ============================================================ */
+.burbuja-editado {
+    font-style: italic;
+    opacity: 0.9;
+}
+
+/* ============================================================
+   CURSOR EN MENSAJES CON MENÚ CONTEXTUAL
+   ============================================================ */
+.burbuja.burbuja-propia,
+.burbuja.burbuja-ajena {
+    cursor: context-menu;
+}
+
+/* ============================================================
+   CURSOR EN MENSAJES PROPIOS (indica que hay menú contextual)
+   ============================================================ */
+.burbuja.burbuja-propia {
+    cursor: context-menu;
+}
+
+/* ============================================================
+   CONTENEDOR DE MENSAJES CON SCROLL
+   ============================================================ */
+.chat-mensajes {
+    flex: 1;
+    max-height: 28rem;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+    margin-bottom: 0.75rem;
+    scroll-behavior: smooth;
+}
+
+/* ============================================================
+   CALENDARIO MENSUAL CLÁSICO
+   ============================================================ */
+.calendario-mensual {
+    padding: 1rem;
+}
+
+.calendario-header-dias {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+.calendario-dia-nombre {
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #7dd3fc;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
+    padding: 0.35rem 0;
+}
+
+.calendario-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: minmax(6.5rem, auto);
+    gap: 0.35rem;
+}
+
+.calendario-dia {
+    background: rgba(255, 255, 255, 0.06);
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.45rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-height: 6.5rem;
+    overflow: hidden;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.calendario-dia:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Días del mes anterior/siguiente: más oscuros */
+.calendario-dia.otro-mes {
+    background: rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 255, 255, 0.06);
+    opacity: 0.55;
+}
+.calendario-dia.otro-mes:hover {
+    opacity: 0.75;
+}
+.calendario-dia.otro-mes .calendario-dia-num {
+    color: #6b7f9a;
+}
+
+/* Hoy */
+.calendario-dia.hoy {
+    border-color: var(--celeste);
+    box-shadow: 0 0 0 0.125rem rgba(44, 116, 179, 0.4);
+    background: rgba(44, 116, 179, 0.12);
+}
+.calendario-dia.hoy .calendario-dia-num {
+    background: var(--celeste);
+    color: #fff;
+    border-radius: 50%;
+    width: 1.65rem;
+    height: 1.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+
+/* Feriado */
+.calendario-dia.feriado {
+    background: rgba(202, 138, 4, 0.12);
+    border-color: rgba(202, 138, 4, 0.5);
+}
+.calendario-dia.feriado.otro-mes {
+    background: rgba(202, 138, 4, 0.05);
+}
+
+.calendario-dia-num {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #eaf2ff;
+    margin-bottom: 0.15rem;
+    line-height: 1.1;
+}
+
+.calendario-dia-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+    overflow: hidden;
+}
+
+.calendario-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.68rem;
+    line-height: 1.2;
+    background: rgba(255, 255, 255, 0.06);
+    border-left: 0.125rem solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.calendario-item-tarea   { border-left-color: #7dd3fc; }
+.calendario-item-evento  { border-left-color: #a855f7; }
+.calendario-item-feriado { border-left-color: #ca8a04; background: rgba(202, 138, 4, 0.15); }
+
+.calendario-item-icono {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+}
+
+.calendario-item-titulo {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #eaf2ff;
+}
+.calendario-item-titulo strong {
+    color: #7dd3fc;
+    font-weight: 700;
+}
+
+.calendario-mas {
+    font-size: 0.65rem;
+    color: #a5c3e8;
+    font-style: italic;
+    text-align: right;
+    padding: 0.1rem 0.3rem 0;
+}
+
+/* Leyenda */
+.calendario-leyenda {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.75rem;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    color: #cfe2ff;
+}
+.leyenda-punto {
+    display: inline-block;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+}
+.leyenda-tarea   { background: #7dd3fc; }
+.leyenda-evento  { background: #a855f7; }
+.leyenda-feriado { background: #ca8a04; }
+.leyenda-hoy     { background: var(--celeste); }
+
+/* ============================================================
+   BARRA SUPERIOR DEL CALENDARIO (título + navegación)
+   ============================================================ */
+.calendario-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.calendario-nav {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.calendario-nav .btn-primario,
+.calendario-nav .btn-secundario {
+    margin: 0;
+}
+.btn-hoy-actual {
+    box-shadow: 0 0 0 0.125rem rgba(44, 116, 179, 0.35);
+}
+
+/* ============================================================
+   DÍA CLICKEABLE
+   ============================================================ */
+.calendario-dia-clickeable {
+    cursor: pointer;
+}
+.calendario-dia-clickeable:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--celeste);
+}
+
+/* ============================================================
+   MODAL DE EVENTOS DEL DÍA
+   ============================================================ */
+.dia-evento-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.5rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.05);
+    color: #eaf2ff;
+    font-family: inherit;
+    font-size: 0.92rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.dia-evento-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateX(0.15rem);
+}
+.dia-evento-tarea   { border-left: 0.25rem solid #7dd3fc; }
+.dia-evento-evento  { border-left: 0.25rem solid #a855f7; }
+.dia-evento-feriado { border-left: 0.25rem solid #ca8a04; background: rgba(202, 138, 4, 0.12); }
+.dia-evento-icono {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.dia-evento-texto {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dia-evento-texto strong {
+    color: #7dd3fc;
+}
+.dia-evento-flecha {
+    flex-shrink: 0;
+    color: #7dd3fc;
+    font-weight: 700;
+}
+
+/* ============================================================
+   MODAL DE DETALLE DE EVENTO
+   ============================================================ */
+.detalle-linea {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.35rem 0;
+    border-bottom: 0.0625rem solid rgba(255, 255, 255, 0.05);
+    flex-wrap: wrap;
+}
+.detalle-linea:last-child {
+    border-bottom: none;
+}
+.detalle-label {
+    color: #a5c3e8;
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 8rem;
+}
+.detalle-valor {
+    color: #eaf2ff;
+    flex: 1;
+}
+.detalle-descripcion {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    margin: 0.75rem 0;
+    line-height: 1.5;
+    color: #eaf2ff;
+    border-left: 0.1875rem solid var(--celeste);
+    white-space: pre-wrap;
+}
+
+/* ============================================================
+   PUBLICACIÓN INSTITUCIONAL
+   ============================================================ */
+.publicacion-institucional {
+    border-left: 0.25rem solid #a855f7;
+    background: linear-gradient(90deg, rgba(168, 85, 247, 0.08) 0%, var(--vidrio) 40%);
+}
+.badge-institucional {
+    display: inline-block;
+    background: #a855f7;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.5rem;
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.03rem;
+    text-transform: uppercase;
+}
+
+/* ============================================================
+   SECCIÓN EVENTO EN MODAL DE PUBLICACIÓN
+   ============================================================ */
+#seccionEvento {
+    animation: fadeInEvento 0.2s ease;
+}
+@keyframes fadeInEvento {
+    from { opacity: 0; transform: translateY(-0.35rem); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+#seccionEvento input[type="datetime-local"],
+#seccionEvento input[type="date"] {
+    width: 100%;
+}
+
+/* ============================================================
+   MODAL DE PERFIL (más ancho para los 5 campos)
+   ============================================================ */
+#modalPerfil .modal-caja {
+    min-width: 26rem;
+}
+
+/* ============================================================
+   HEADER DE INSTITUCIÓN (admin/institucion.php)
+   ============================================================ */
+.institucion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.institucion-header h1 {
+    margin: 0;
+}
+
+/* ============================================================
+   CHECKBOX DINÁMICO DE CURSOS (materias)
+   ============================================================ */
+.checkbox-cursos {
+    border: 0.0625rem solid var(--borde-vidrio);
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.15);
+    margin-top: 0.35rem;
+    overflow: hidden;
+}
+
+.checkbox-cursos-controles {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(0, 0, 0, 0.2);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.checkbox-cursos-buscar {
+    flex: 1 1 8rem;
+    min-width: 6rem;
+    padding: 0.35rem 0.55rem !important;
+    margin: 0 !important;
+    border-radius: 0.35rem !important;
+    border: 0.0625rem solid var(--borde-vidrio) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #fff !important;
+    font-size: 0.8rem !important;
+    font-family: inherit;
+}
+.checkbox-cursos-buscar::placeholder {
+    color: rgba(207, 226, 255, 0.5);
+}
+
+.btn-mini {
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.35rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfe2ff;
+    font-size: 0.72rem;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.btn-mini:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.checkbox-cursos-lista {
+    max-height: 12rem;
+    overflow-y: auto;
+    padding: 0.35rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.15rem 0.35rem;
+}
+
+.checkbox-cursos-item {
+    display: flex !important;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    margin: 0 !important;
+    transition: background 0.12s;
+    color: #eaf2ff;
+}
+.checkbox-cursos-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.checkbox-cursos-item input[type="checkbox"] {
+    width: 1rem !important;
+    height: 1rem !important;
+    margin: 0 !important;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: var(--celeste);
+}
+
+.checkbox-cursos-item span {
+    flex: 1;
+    line-height: 1.3;
+}
+
+.checkbox-cursos-item span small {
+    font-size: 0.72rem;
+}
+
+/* ============================================================
+   DUPLICAR CURSO: item de materia con checkbox "crear nueva copia"
+   ============================================================ */
+.dup-materia-item {
+    font-size: 0.85rem;
+}
+
+.dup-materia-item .label-checkbox {
+    font-size: 0.85rem;
+}
+
+.dup-materia-item .label-checkbox span {
+    white-space: nowrap;
+}
+
+/* ============================================================
+   DUPLICAR CURSO: item de materia con checkbox "crear materia nueva"
+   ============================================================ */
+.dup-materia-item {
+    font-size: 0.85rem;
+}
+
+.dup-materia-item .label-checkbox {
+    font-size: 0.85rem;
+}
+
+.dup-materia-item .label-checkbox span {
+    white-space: nowrap;
+}
+
+/* Selector de cursada en materias */
+#cursadaLista a {
+    transition: background 0.15s, transform 0.12s;
+}
+#cursadaLista a:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(0.15rem);
+}
+
+@keyframes spinner-btn {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes badge-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0.125rem rgba(220, 38, 38, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 0 0.35rem rgba(220, 38, 38, 0.15);
+    }
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(1rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 48rem) {
+    .asistencia-grid {
+        grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+        gap: 0.65rem;
+    }
+    .alumno-card {
+        padding: 0.5rem;
+    }
+    .alumno-card-nombre {
+        font-size: 0.85rem;
+    }
+    .alumno-card-info {
+        font-size: 0.72rem;
+    }
+    .layout-mensajes {
+        grid-template-columns: 1fr;
+    }
+    .contenido-principal {
+        margin-left: 0;
+        max-width: 100%;
+    }
+    .menu-lateral {
+        position: static;
+        width: 100%;
+        height: auto;
+    }
+    .pie-pagina {
+        margin-left: 0;
+    }
+    .toast {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+    }
+    .calendario-grid {
+        grid-auto-rows: minmax(4.5rem, auto);
+        gap: 0.2rem;
+    }
+    .calendario-dia {
+        padding: 0.25rem;
+        min-height: 4.5rem;
+        border-radius: 0.35rem;
+    }
+    .calendario-dia-num {
+        font-size: 0.75rem;
+    }
+    .calendario-item {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.2rem;
+    }
+    .calendario-item-icono {
+        display: none;
+    }
+    .calendario-dia-nombre {
+        font-size: 0.65rem;
+    }
+    .checkbox-cursos-lista {
+        grid-template-columns: 1fr;
+    }
+}

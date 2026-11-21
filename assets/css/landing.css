@@ -1,0 +1,45 @@
+:root {
+    --azul-1: #0a2647;
+    --azul-2: #144272;
+    --azul-3: #205295;
+    --celeste: #2c74b3;
+    --vidrio: rgba(255,255,255,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: linear-gradient(135deg, var(--azul-1), var(--azul-2)); color: #eaf2ff; min-height: 100vh; }
+
+.landing-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: rgba(0,0,0,0.25); backdrop-filter: blur(10px); }
+.landing-header .brand { color: #fff; font-weight: 700; text-decoration: none; font-size: 1.3rem; }
+.landing-header nav a { color: #cfe2ff; margin-left: 1.5rem; text-decoration: none; }
+.landing-header nav a:hover { color: #fff; }
+.btn-login { background: var(--celeste); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; margin-left: 1.5rem; }
+
+.landing-main { max-width: 1000px; margin: 3rem auto; padding: 0 1.5rem; }
+.hero h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+.hero p { font-size: 1.15rem; color: #cfe2ff; }
+.landing-main ul { margin-top: 2rem; list-style: none; }
+.landing-main ul li { padding: 0.75rem; margin-bottom: 0.5rem; background: var(--vidrio); border-radius: 8px; }
+.landing-main form { display: flex; flex-direction: column; gap: 1rem; max-width: 500px; }
+.landing-main form input, .landing-main form textarea { padding: 0.7rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: var(--vidrio); color: #fff; }
+.landing-main form textarea { min-height: 100px; }
+
+.modal-fondo { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal-fondo.oculto { display: none; }
+.modal-caja { background: var(--azul-2); padding: 2rem; border-radius: 12px; min-width: 340px; max-width: 90vw; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.modal-caja label { display: block; margin: 0.75rem 0; }
+.modal-caja input { width: 100%; padding: 0.55rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #fff; }
+.modal-acciones { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem; }
+.btn-primario { background: var(--celeste); color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; }
+.btn-secundario { background: rgba(255,255,255,0.12); color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; }
+
+.alerta-sesion {
+    max-width: 500px;
+    margin: 1rem auto;
+    padding: 1rem;
+    background: rgba(202, 138, 4, 0.3);
+    border-left: 4px solid #ca8a04;
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 600;
+    text-align: center;
+}

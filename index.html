@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mi Aula Virtual — Iniciar sesión</title>
+    <link rel="stylesheet" href="assets/css/landing.css">
+</head>
+<body>
+<header class="landing-header">
+    <a href="index.html" class="brand">🎓 Mi Aula Virtual</a>
+    <nav>
+        <a href="servicios.html">Servicios</a>
+        <a href="contacto.html">Contacto</a>
+        <button class="btn-login" onclick="toggleLogin()">Iniciar sesión</button>
+    </nav>
+</header>
+<main class="landing-main">
+    <div id="avisoSesion" style="display:none; max-width:500px; margin:1rem auto; padding:1rem; background:rgba(202,138,4,0.3); border-left:4px solid #ca8a04; border-radius:8px; color:#fff; text-align:center;">⏱️ Tu sesión expiró. Iniciá sesión de nuevo.</div>
+    <section class="hero">
+        <h1>Bienvenido a Mi Aula Virtual</h1>
+        <p>La plataforma educativa que conecta docentes, alumnos y familias.</p>
+    </section>
+</main>
+<div class="modal-fondo oculto" id="modalLogin">
+    <div class="modal-caja">
+        <h3>Iniciar sesión</h3>
+        <form id="formLogin">
+            <label>DNI <input type="text" name="dni" required></label>
+            <label>Contraseña <input type="password" name="password" minlength="8" maxlength="20" required></label>
+            <div class="modal-acciones">
+                <button type="button" class="btn-secundario" onclick="toggleLogin()">Cancelar</button>
+                <button type="submit" class="btn-primario">Ingresar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function toggleLogin() { document.getElementById('modalLogin').classList.toggle('oculto'); }
+document.getElementById('formLogin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const r = await fetch('/plataforma/api/auth_ajax.php?action=login', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) window.location.href = d.redirect;
+    else alert(d.mensaje || 'Error');
+});
+const params = new URLSearchParams(window.location.search);
+if (params.get('expirada') === '1') { document.getElementById('avisoSesion').style.display = 'block'; toggleLogin(); }
+</script>
+</body>
+</html>
