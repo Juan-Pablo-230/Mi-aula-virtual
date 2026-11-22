@@ -67,7 +67,7 @@ function esDocenteOAdmin(): bool {
 
 function fotoPerfilUrl(?string $foto): string {
     if (!empty($foto)) return $foto;
-    return '/assets/img/avatar_default.svg';
+    return '/assets/img/anonimo.png';
 }
 
 function añoLectivoActual(PDO $pdo, int $institucionId): int {
