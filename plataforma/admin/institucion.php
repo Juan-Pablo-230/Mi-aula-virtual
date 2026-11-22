@@ -59,10 +59,15 @@ $stmt = $pdo->prepare("
 $stmt->execute([$institucionId]);
 foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
 
+$contarUsuarios = function (string $condRol) use ($pdo, $institucionId): int {
+    $st = $pdo->prepare("SELECT COUNT(*) FROM usuarios WHERE $condRol AND institucion_id = ?"); // $condRol es literal fijo, no entrada del usuario
+    $st->execute([$institucionId]);
+    return (int)$st->fetchColumn();
+};
 $statsUsuarios = [
-    'alumnos'   => (int)$pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol='alumno' AND institucion_id = $institucionId")->fetchColumn(),
-    'docentes'  => (int)$pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol='docente' AND institucion_id = $institucionId")->fetchColumn(),
-    'directivos'=> (int)$pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol IN ('directivo','secretario') AND institucion_id = $institucionId")->fetchColumn(),
+    'alumnos'   => $contarUsuarios("rol='alumno'"),
+    'docentes'  => $contarUsuarios("rol='docente'"),
+    'directivos'=> $contarUsuarios("rol IN ('directivo','secretario')"),
     'total'     => count($usuarios),
 ];
 
@@ -183,7 +188,7 @@ $hastaEsc = h($hasta);
                             </td>
                             <td><?= $u['activo'] ? '✅' : '❌' ?></td>
                             <td>
-                                <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= json_encode($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
+                                <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
                                 <?php if ($u['id'] != $_SESSION['user_id']): ?>
                                     <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)">🗑️</button>
                                 <?php endif; ?>
@@ -247,8 +252,8 @@ $hastaEsc = h($hasta);
 
         <script>
         window.INST_USER_API = '/plataforma/api/institucion_ajax.php?id=<?= $institucionId ?>';
-        window.DIVISIONES = <?= json_encode($divisiones) ?>;
-        window.MATERIAS = <?= json_encode($materias) ?>;
+        window.DIVISIONES = <?= jsonJs($divisiones) ?>;
+        window.MATERIAS = <?= jsonJs($materias) ?>;
         </script>
         <script src="/assets/js/institucion_usuarios.js"></script>
 
@@ -305,10 +310,10 @@ Juan,Pérez,12345678,juan@example.com,alumno</pre>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
         <script>
         window.INST_CHART_DATA = {
-            divisiones: { labels: <?= json_encode(array_column($alumnosPorDivision, 'division')) ?>, data: <?= json_encode(array_map('intval', array_column($alumnosPorDivision, 'total'))) ?> },
-            roles:      { labels: <?= json_encode($labelsRoles) ?>, data: <?= json_encode($datosRoles) ?> },
-            asistencia: { labels: <?= json_encode(array_keys($asistenciaPorEstado)) ?>, data: <?= json_encode(array_values($asistenciaPorEstado)) ?> },
-            pubs:       { labels: <?= json_encode($labelsMaterias) ?>, data: <?= json_encode($datosMaterias) ?> }
+            divisiones: { labels: <?= jsonJs(array_column($alumnosPorDivision, 'division')) ?>, data: <?= jsonJs(array_map('intval', array_column($alumnosPorDivision, 'total'))) ?> },
+            roles:      { labels: <?= jsonJs($labelsRoles) ?>, data: <?= jsonJs($datosRoles) ?> },
+            asistencia: { labels: <?= jsonJs(array_keys($asistenciaPorEstado)) ?>, data: <?= jsonJs(array_values($asistenciaPorEstado)) ?> },
+            pubs:       { labels: <?= jsonJs($labelsMaterias) ?>, data: <?= jsonJs($datosMaterias) ?> }
         };
         </script>
         <script src="/assets/js/institucion_estadisticas.js"></script>

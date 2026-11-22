@@ -38,7 +38,8 @@ if (!empty($_FILES['csv']['tmp_name'])) {
             $pdo->prepare("UPDATE usuarios SET institucion_id = ? WHERE id = ?")->execute([$miInst, $id]);
             $resultado[] = "✔ Línea $linea: $apellido, $nombre (DNI $dni) creado como $rol";
         } catch (Exception $e) {
-            $resultado[] = "Línea $linea: ERROR " . $e->getMessage();
+            error_log('importacion ERROR: ' . $e->getMessage());
+            $resultado[] = "Línea $linea: ERROR al crear el usuario";
         }
     }
     fclose($f);

@@ -7,6 +7,7 @@ require_once __DIR__ . '/models/AcademicModel.php';
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
 $userId = (int)$user['id'];
+$miInstitucionId = (int)($user['institucion_id'] ?? 0);
 
 $tz = new DateTimeZone('America/Argentina/Buenos_Aires');
 
@@ -22,17 +23,20 @@ $otrosIds = array_map(fn($c) => (int)$c['_id'], $chats);
 $usuariosPorId = [];
 if (!empty($otrosIds)) {
     $ph = implode(',', array_fill(0, count($otrosIds), '?'));
-    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id IN ($ph)");
-    $stmt->execute($otrosIds);
+    // Conversaciones antiguas con usuarios de otras instituciones ya no se listan
+    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id IN ($ph) AND institucion_id = ? AND ? > 0");
+    $stmt->execute(array_merge($otrosIds, [$miInstitucionId, $miInstitucionId]));
     foreach ($stmt as $u) $usuariosPorId[(int)$u['id']] = $u;
 }
 
 $destinoId = (int)($_GET['con_id'] ?? 0);
 $destino = null;
 if ($destinoId) {
-    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id = ?");
-    $stmt->execute([$destinoId]);
+    // Solo se puede conversar con usuarios activos de la MISMA institución
+    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id = ? AND activo = 1 AND institucion_id = ? AND ? > 0");
+    $stmt->execute([$destinoId, $miInstitucionId, $miInstitucionId]);
     $destino = $stmt->fetch();
+    if (!$destino) { $destinoId = 0; }
 }
 
 $msgs = [];
@@ -90,7 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $destinoId && $destino) {
     }
 }
 
-$usuarios = $pdo->query("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id != $userId AND activo = 1 ORDER BY apellido, nombre")->fetchAll();
+$stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id != ? AND activo = 1 AND institucion_id = ? AND ? > 0 ORDER BY apellido, nombre");
+$stmt->execute([$userId, $miInstitucionId, $miInstitucionId]);
+$usuarios = $stmt->fetchAll();
 ?>
 <?php include __DIR__ . '/views/header.php'; ?>
 <?php include __DIR__ . '/views/menu.php'; ?>

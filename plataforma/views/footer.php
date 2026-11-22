@@ -19,7 +19,7 @@
                 <input type="email" name="email" value="<?= h($currentUser['email'] ?? '') ?>" required>
             </label>
             <label>Nueva contraseña (opcional, 8-20 caracteres)
-                <input type="password" name="password" minlength="8" maxlength="20">
+                <input type="password" name="password" minlength="8" maxlength="128">
             </label>
             <label>Foto de perfil
                 <input type="file" name="foto" accept="image/*">

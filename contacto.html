@@ -2,26 +2,122 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contacto — Mi Aula Virtual</title>
     <link rel="stylesheet" href="assets/css/landing.css">
+    <link rel="shortcut icon" href="/assets/img/icon.png" type="image/x-icon">
 </head>
 <body>
 <header class="landing-header">
     <a href="index.html" class="brand">🎓 Mi Aula Virtual</a>
     <nav>
+        <a href="index.html">Inicio</a>
         <a href="servicios.html">Servicios</a>
-        <a href="contacto.html">Contacto</a>
-        <button class="btn-login" onclick="location.href='index.html'">Iniciar sesión</button>
+        <a href="contacto.html" class="activo">Contacto</a>
+        <button type="button" class="btn-login" onclick="abrirLoginModal()">Iniciar sesión</button>
     </nav>
 </header>
+
 <main class="landing-main">
-    <h1>Contacto</h1>
-    <form onsubmit="event.preventDefault();alert('Mensaje enviado');">
-        <label>Nombre <input type="text" required></label>
-        <label>Correo <input type="email" required></label>
-        <label>Mensaje <textarea required></textarea></label>
-        <button class="btn-primario">Enviar</button>
-    </form>
+    <div class="page-header">
+        <h1>Contacto</h1>
+        <p>¿Tenés consultas o necesitás soporte? Escribinos y te responderemos a la brevedad.</p>
+    </div>
+
+    <div class="form-card">
+        <form action="https://formsubmit.co/TU_CORREO@ejemplo.com" method="POST">
+            <input type="hidden" name="_subject" value="Nuevo mensaje desde Mi Aula Virtual">
+            <input type="hidden" name="_captcha" value="false">
+            <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off">
+
+            <label>Nombre
+                <input type="text" name="nombre" placeholder="Tu nombre completo" required>
+            </label>
+            <label>Correo
+                <input type="email" name="email" placeholder="tu@correo.com" required>
+            </label>
+            <label>Mensaje
+                <textarea name="mensaje" placeholder="Escribí tu consulta aquí..." required></textarea>
+            </label>
+            <button type="submit" class="btn-primario">Enviar</button>
+        </form>
+    </div>
 </main>
+
+<!-- Modal de login: el contenido se carga desde login.php -->
+<div class="modal-fondo oculto" id="modalLogin" role="dialog" aria-modal="true" aria-labelledby="tituloModalLogin">
+    <div class="modal-caja" id="modalLoginContenido">
+        <div style="text-align:center; padding:2rem; color:#cfe2ff;">Cargando…</div>
+    </div>
+</div>
+
+<script>
+const LOGIN_URL = '/login.php?fragmento=1';
+let loginCargado = false;
+
+async function abrirLoginModal() {
+    const modal = document.getElementById('modalLogin');
+    if (!modal) return;
+    modal.classList.remove('oculto');
+
+    if (!loginCargado) {
+        try {
+            const r = await fetch(LOGIN_URL, {
+                headers: { 'X-Requested-With': 'fetch' },
+                credentials: 'include'
+            });
+            const html = await r.text();
+            document.getElementById('modalLoginContenido').innerHTML = html;
+            loginCargado = true;
+            engancharFormLogin();
+        } catch (e) {
+            document.getElementById('modalLoginContenido').innerHTML =
+                '<div class="alerta danger" style="margin:1rem;">Error al cargar el formulario de login.</div>';
+        }
+    }
+
+    setTimeout(() => {
+        document.querySelector('#modalLoginContenido input[name="dni"]')?.focus();
+    }, 100);
+}
+
+function cerrarLoginModal() {
+    document.getElementById('modalLogin')?.classList.add('oculto');
+}
+window.cerrarLoginModal = cerrarLoginModal;
+
+function engancharFormLogin() {
+    const form = document.getElementById('formLogin');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const err = document.getElementById('loginError');
+        if (err) err.style.display = 'none';
+
+        const fd = new FormData(form);
+        try {
+            const r = await fetch('/plataforma/api/auth_ajax.php?action=login', { method: 'POST', body: fd });
+            const d = await r.json();
+            if (d.ok) window.location.href = d.redirect;
+            else if (err) { err.textContent = d.mensaje || 'Error'; err.style.display = 'block'; }
+        } catch (ex) {
+            if (err) { err.textContent = 'Error de red: ' + ex.message; err.style.display = 'block'; }
+        }
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('modalLogin');
+    if (modal && e.target === modal) cerrarLoginModal();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cerrarLoginModal();
+});
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('expirada') === '1') abrirLoginModal();
+</script>
 </body>
 </html>

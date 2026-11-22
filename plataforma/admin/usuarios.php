@@ -145,7 +145,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
                         </td>
                         <td><?= $u['activo'] ? '✅' : '❌' ?></td>
                         <td>
-                            <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= json_encode($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
+                            <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
                             <?php if ($u['id'] != $_SESSION['user_id']): ?>
                                 <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)">🗑️</button>
                             <?php endif; ?>
@@ -257,8 +257,8 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
 
 <script>
 const API = '/plataforma/api/usuarios_ajax.php';
-const DIVISIONES = <?= json_encode($divisiones) ?>;
-const MATERIAS = <?= json_encode($materias) ?>;
+const DIVISIONES = <?= jsonJs($divisiones) ?>;
+const MATERIAS = <?= jsonJs($materias) ?>;
 
 let asignacionesActuales = [];
 let divisionActual = 0;

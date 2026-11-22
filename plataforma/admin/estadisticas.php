@@ -14,15 +14,20 @@ $userActual = Auth::currentUser($pdo);
 $miInst = (int)($userActual['institucion_id'] ?? 0);
 if (!$miInst) die('Tu usuario no tiene institución asignada.');
 
-$totalAlumnos    = (int)$pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol='alumno' AND institucion_id = $miInst")->fetchColumn();
-$totalDocentes   = (int)$pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol='docente' AND institucion_id = $miInst")->fetchColumn();
-$totalCursos     = (int)$pdo->query("SELECT COUNT(*) FROM asignaciones WHERE institucion_id = $miInst")->fetchColumn();
-$totalDivisiones = (int)$pdo->query("
+$contar = function (string $sql) use ($pdo, $miInst): int {
+    $st = $pdo->prepare($sql);
+    $st->execute([$miInst]);
+    return (int)$st->fetchColumn();
+};
+$totalAlumnos    = $contar("SELECT COUNT(*) FROM usuarios WHERE rol='alumno' AND institucion_id = ?");
+$totalDocentes   = $contar("SELECT COUNT(*) FROM usuarios WHERE rol='docente' AND institucion_id = ?");
+$totalCursos     = $contar("SELECT COUNT(*) FROM asignaciones WHERE institucion_id = ?");
+$totalDivisiones = $contar("
     SELECT COUNT(*) FROM divisiones d
     JOIN asignaciones a ON a.id = d.asignacion_id
-    WHERE a.institucion_id = $miInst
-")->fetchColumn();
-$totalMaterias   = (int)$pdo->query("SELECT COUNT(*) FROM materias WHERE institucion_id = $miInst")->fetchColumn();
+    WHERE a.institucion_id = ?
+");
+$totalMaterias   = $contar("SELECT COUNT(*) FROM materias WHERE institucion_id = ?");
 
 try { $totalPublicaciones = $mongoPublicaciones->countDocuments(); } catch (Exception $e) { $totalPublicaciones = '—'; }
 try { $totalArchivos     = $mongoArchivos->countDocuments(); }       catch (Exception $e) { $totalArchivos = '—'; }
@@ -106,10 +111,10 @@ foreach ($pubsPorMateria as $mid => $total) { $labelsMaterias[] = $nombresMateri
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const CHART_DATA = {
-    cursos:      { labels: <?= json_encode(array_column($alumnosPorCurso, 'curso')) ?>,  data: <?= json_encode(array_map('intval', array_column($alumnosPorCurso, 'total'))) ?> },
-    divisiones:  { labels: <?= json_encode(array_column($alumnosPorDivision, 'division')) ?>, data: <?= json_encode(array_map('intval', array_column($alumnosPorDivision, 'total'))) ?> },
-    asistencia:  { labels: <?= json_encode(array_keys($asistenciaPorEstado)) ?>, data: <?= json_encode(array_values($asistenciaPorEstado)) ?> },
-    publicaciones: { labels: <?= json_encode($labelsMaterias) ?>, data: <?= json_encode($datosMaterias) ?> },
+    cursos:      { labels: <?= jsonJs(array_column($alumnosPorCurso, 'curso')) ?>,  data: <?= jsonJs(array_map('intval', array_column($alumnosPorCurso, 'total'))) ?> },
+    divisiones:  { labels: <?= jsonJs(array_column($alumnosPorDivision, 'division')) ?>, data: <?= jsonJs(array_map('intval', array_column($alumnosPorDivision, 'total'))) ?> },
+    asistencia:  { labels: <?= jsonJs(array_keys($asistenciaPorEstado)) ?>, data: <?= jsonJs(array_values($asistenciaPorEstado)) ?> },
+    publicaciones: { labels: <?= jsonJs($labelsMaterias) ?>, data: <?= jsonJs($datosMaterias) ?> },
 };
 const chartColors = ['#2c74b3', '#7dd3fc', '#15803d', '#ca8a04', '#b91c1c', '#a855f7', '#0ea5e9', '#f472b6'];
 

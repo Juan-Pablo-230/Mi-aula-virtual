@@ -60,12 +60,16 @@ class FileHandler {
             }
         }
 
-        if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0775, true);
-        $nombreSeguro = $sha . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', basename($file['name']));
+        self::prepararDirectorio();
+        // El archivo se guarda SOLO con su hash: sin extensión ni nada controlado por el usuario.
+        // Así, aunque alguien suba "x.php", el servidor nunca lo interpreta como código.
+        // El nombre original se conserva en Mongo y se usa únicamente al descargar.
+        $nombreSeguro = $sha;
         $rutaFinal = UPLOAD_DIR . $nombreSeguro;
         if (!move_uploaded_file($file['tmp_name'], $rutaFinal)) {
             return ['estado' => 'error', 'mensaje' => 'No se pudo guardar el archivo'];
         }
+        @chmod($rutaFinal, 0640);
 
         $ins = $this->archivos->insertOne([
             'sha256'          => $sha,
@@ -86,6 +90,27 @@ class FileHandler {
             'archivo_id' => (string)$ins->getInsertedId(),
             'nombre'     => $file['name'],
         ];
+    }
+
+    /**
+     * Crea el directorio de subidas y lo blinda aunque esté dentro del web root:
+     * .htaccess (Apache 2.4) que niega todo acceso directo e index.html vacío.
+     * Con nginx hay que negar el acceso a esa ruta en la configuración del servidor
+     * (o, mejor, definir UPLOAD_DIR fuera del directorio web).
+     */
+    public static function prepararDirectorio(): void {
+        if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0750, true);
+        $ht = UPLOAD_DIR . '.htaccess';
+        if (!file_exists($ht)) {
+            file_put_contents($ht, "# Generado automáticamente: sin acceso directo a los archivos subidos\n"
+                . "Require all denied\n"
+                . "<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n"
+                . "<IfModule mod_php.c>\n    php_flag engine off\n</IfModule>\n"
+                . "RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar\n"
+                . "SetHandler none\n");
+        }
+        $ix = UPLOAD_DIR . 'index.html';
+        if (!file_exists($ix)) file_put_contents($ix, '');
     }
 
     private function escanear(string $ruta): array {

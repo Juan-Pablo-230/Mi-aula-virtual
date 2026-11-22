@@ -217,8 +217,8 @@ function topeDeAlumno(int $aid, array $t, int $def): int {
     return $t[$aid] ?? $def;
 }
 
-$feriadosJson = json_encode($feriados);
-$diasJson = json_encode($diasConAsistencia);
+$feriadosJson = jsonJs($feriados);
+$diasJson = jsonJs($diasConAsistencia);
 
 include __DIR__ . '/views/header.php';
 include __DIR__ . '/views/menu.php';
@@ -288,7 +288,7 @@ include __DIR__ . '/views/menu.php';
 </main>
 <script>
 window.MATERIA_ID = <?= (int)$materiaId ?>;
-window.FECHA = <?= json_encode($fecha) ?>;
+window.FECHA = <?= jsonJs($fecha) ?>;
 window.ES_DIRECTIVO = <?= in_array($rol, ['directivo','secretario','madre']) ? 'true' : 'false' ?>;
 window.FERIADOS = <?= $feriadosJson ?>;
 window.DIAS_CON_ASISTENCIA = <?= $diasJson ?>;

@@ -278,7 +278,7 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                     </div>
                     <div style="display:flex; gap:0.35rem;">
                         <button type="button" class="btn-secundario"
-                            onclick='abrirEditarMateria(<?= json_encode(['materia' => $m, 'cursos_ids' => array_map(fn($c) => (int)$c['id'], $cursos)]) ?>)'>✏️ Editar</button>
+                            onclick='abrirEditarMateria(<?= jsonJs(['materia' => $m, 'cursos_ids' => array_map(fn($c) => (int)$c['id'], $cursos)]) ?>)'>✏️ Editar</button>
                         <button type="button" class="btn-peligro-sm" onclick="eliminarMateria(<?= $m['id'] ?>)">🗑️</button>
                     </div>
                 </div>
@@ -379,9 +379,9 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
 
 <script>
 window.CURSOS_DATA = {
-    asignaciones: <?= json_encode($asignaciones) ?>,
-    divisionesPorAsignacion: <?= json_encode($divisionesPorAsignacion) ?>,
-    materiasPorAsignacion: <?= json_encode($materiasPorAsignacion) ?>
+    asignaciones: <?= jsonJs($asignaciones) ?>,
+    divisionesPorAsignacion: <?= jsonJs($divisionesPorAsignacion) ?>,
+    materiasPorAsignacion: <?= jsonJs($materiasPorAsignacion) ?>
 };
 </script>
 <script src="/assets/js/admin_cursos.js?v=<?= time() ?>"></script>

@@ -38,6 +38,7 @@ $hintNombre = $esDuenioNuevo
 <head>
     <meta charset="UTF-8">
     <title>Primer ingreso — Mi Aula Virtual</title>
+    <meta name="csrf-token" content="<?= h(csrfToken()) ?>">
     <link rel="stylesheet" href="/assets/css/aulaviva.css">
     <script src="/assets/js/aulaviva.js"></script>
 </head>
@@ -69,10 +70,10 @@ $hintNombre = $esDuenioNuevo
                        required maxlength="255" placeholder="tu@email.com">
             </label>
             <label>Nueva contraseña
-                <input type="password" name="password" required minlength="8" maxlength="20" autocomplete="new-password" placeholder="Mínimo 8 caracteres">
+                <input type="password" name="password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Mínimo 8 caracteres, con letras y números">
             </label>
             <label>Repetir contraseña
-                <input type="password" name="password2" required minlength="8" maxlength="20" autocomplete="new-password" placeholder="Repetí la contraseña">
+                <input type="password" name="password2" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Repetí la contraseña">
             </label>
             <div id="primerError" class="alerta danger" style="display:none;"></div>
             <div class="modal-acciones" style="justify-content:flex-start; margin-top:1rem;">

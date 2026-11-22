@@ -58,7 +58,7 @@ if ($stmt->fetchColumn()) {
 if ($password !== $password2) {
     jsonResponse(['ok' => false, 'mensaje' => 'Las contraseñas no coinciden']);
 }
-$val = validarPassword($password);
+$val = validarPassword($password, (string)$user['dni']);
 if (!$val['ok']) {
     jsonResponse(['ok' => false, 'mensaje' => $val['msg']]);
 }

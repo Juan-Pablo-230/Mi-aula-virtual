@@ -237,7 +237,7 @@ try {
             $stmt = $pdo->prepare("SELECT nivel_id, institucion_id FROM asignaciones WHERE id = ?");
             $stmt->execute([$id]);
             $original = $stmt->fetch();
-            if (!$original) throw new Exception('Curso original no existe');
+            if (!$original) throw new MensajeUsuarioException('Curso original no existe');
             if ((int)$original['institucion_id'] !== $miInst) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
 
             $copiarDivisiones = !empty($_POST['copiar_divisiones']);
@@ -293,5 +293,5 @@ try {
     }
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    jsonResponse(['ok' => false, 'mensaje' => $e->getMessage()], 500);
+    respuestaErrorInterno($e, 'cursos_ajax');
 }

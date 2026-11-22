@@ -28,6 +28,7 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
 <head>
     <meta charset="UTF-8">
     <title>Mi Aula Virtual</title>
+    <meta name="csrf-token" content="<?= h(csrfToken()) ?>">
     <link rel="shortcut icon" href="/assets/img/icon.png" type="image/x-icon">
     <link rel="stylesheet" href="/assets/css/aulaviva.css">
     <script src="/assets/js/aulaviva.js"></script>

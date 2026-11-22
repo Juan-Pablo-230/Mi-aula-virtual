@@ -9,6 +9,7 @@ if (file_exists(__DIR__ . '/../../.env')) {
 }
 
 require_once __DIR__ . '/constants.php';
+require_once __DIR__ . '/../core/Security.php';
 
 try {
     $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
@@ -22,7 +23,9 @@ try {
         PDO::ATTR_EMULATE_PREPARES   => false,
     ]);
 } catch (PDOException $e) {
-    die('Error de conexión a MariaDB: ' . htmlspecialchars($e->getMessage()));
+    error_log('Conexión MariaDB: ' . $e->getMessage());
+    http_response_code(500);
+    die('Servicio no disponible. Intentá más tarde.');
 }
 
 try {
@@ -32,16 +35,22 @@ try {
     $mongoPublicaciones = $mongoDB->selectCollection('publicaciones');
     $mongoBibliografia  = $mongoDB->selectCollection('bibliografia');
 } catch (Exception $e) {
-    die('Error de conexión a MongoDB: ' . htmlspecialchars($e->getMessage()));
+    error_log('Conexión MongoDB: ' . $e->getMessage());
+    http_response_code(500);
+    die('Servicio no disponible. Intentá más tarde.');
 }
 
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_httponly', '1');
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_path', '/');
-    ini_set('session.use_strict_mode', '0');
+    ini_set('session.cookie_secure', esHttps() ? '1' : '0');
+    ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
     session_start();
 }
+
+aplicarCabecerasSeguridad();
+csrfVerificar();
 
 date_default_timezone_set('America/Argentina/Buenos_Aires');

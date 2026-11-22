@@ -1,4 +1,45 @@
 // ============================================================
+// CSRF: agrega el token a todo POST same-origin (fetch y formularios)
+// El token lo imprime el servidor en <meta name="csrf-token">.
+// ============================================================
+(function () {
+    const token = () => (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    const SEGUROS = ['GET', 'HEAD', 'OPTIONS'];
+
+    const fetchOriginal = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+        init = init || {};
+        try {
+            const esRequest = (typeof Request !== 'undefined') && input instanceof Request;
+            const metodo = String(init.method || (esRequest ? input.method : 'GET')).toUpperCase();
+            const url = new URL(esRequest ? input.url : input, window.location.href);
+            if (!SEGUROS.includes(metodo) && url.origin === window.location.origin) {
+                const headers = new Headers(init.headers || (esRequest ? input.headers : undefined));
+                if (!headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', token());
+                init = Object.assign({}, init, { headers: headers });
+            }
+        } catch (e) { /* si algo falla, se envía la petición tal cual */ }
+        return fetchOriginal(input, init);
+    };
+
+    // Fase de captura: corre antes que los handlers de cada página, así el input
+    // oculto ya está dentro del formulario cuando se arma el FormData.
+    document.addEventListener('submit', function (e) {
+        const f = e.target;
+        if (!f || f.tagName !== 'FORM' || String(f.method).toUpperCase() !== 'POST') return;
+        if (f.action && new URL(f.action, window.location.href).origin !== window.location.origin) return;
+        let inp = f.querySelector('input[name="csrf_token"]');
+        if (!inp) {
+            inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'csrf_token';
+            f.appendChild(inp);
+        }
+        inp.value = token();
+    }, true);
+})();
+
+// ============================================================
 // HELPER GLOBAL: fetch con manejo de sesión expirada
 // ============================================================
 async function fetchConSesion(url, options = {}) {
@@ -6,6 +47,12 @@ async function fetchConSesion(url, options = {}) {
 
     try {
         const r = await fetch(url, options);
+
+        if (r.status === 419) {
+            alert('Tu sesión de seguridad venció. Se va a recargar la página; volvé a intentar la acción.');
+            window.location.reload();
+            throw new Error('Sesión expirada');
+        }
 
         if (r.status === 401 || r.status === 403) {
             let mensaje = 'Tu sesión expiró. Redirigiendo al login...';

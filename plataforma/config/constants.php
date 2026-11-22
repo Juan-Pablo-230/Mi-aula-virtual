@@ -24,7 +24,12 @@ $limiteBytes = min($uploadBytes, $postBytes);
 define('UPLOAD_MAX_BYTES', $limiteBytes);
 define('UPLOAD_MAX_MB', round($limiteBytes / 1024 / 1024, 2));
 define('UPLOAD_MAX_LABEL', $uploadMax);
-define('UPLOAD_DIR', __DIR__ . '/../uploads/');
+// Recomendado: definir UPLOAD_DIR en el .env con una ruta FUERA del directorio web
+// (ej. /var/www/mav_uploads). Si no se define, se usa plataforma/uploads/, que queda
+// protegida por FileHandler::prepararDirectorio() (.htaccess) y por guardar los
+// archivos sin extensión.
+$uploadDirCfg = $_ENV['UPLOAD_DIR'] ?? getenv('UPLOAD_DIR') ?: (__DIR__ . '/../uploads');
+define('UPLOAD_DIR', rtrim($uploadDirCfg, '/\\') . '/');
 
 // ============================================================
 // ROLES
@@ -42,4 +47,5 @@ define('CALIF_A_NUMERICO', [
 ]);
 
 define('PASSWORD_MIN', 8);
-define('PASSWORD_MAX', 20);
+define('PASSWORD_MAX', 128);
+define('PASSWORD_TEMPORAL', 'Temporal123');

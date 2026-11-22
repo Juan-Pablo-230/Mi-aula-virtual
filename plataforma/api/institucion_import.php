@@ -38,7 +38,8 @@ while (($row = fgetcsv($f)) !== false) {
         $pdo->prepare("UPDATE usuarios SET institucion_id = ? WHERE id = ?")->execute([$institucionId, $id]);
         $resultado[] = "✔ Línea $linea: $apellido, $nombre (DNI $dni) creado como $rol";
     } catch (Exception $e) {
-        $resultado[] = "Línea $linea: ERROR " . $e->getMessage();
+        error_log('institucion_import ERROR: ' . $e->getMessage());
+        $resultado[] = "Línea $linea: ERROR al crear el usuario";
     }
 }
 fclose($f);

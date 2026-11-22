@@ -324,7 +324,7 @@ $nombresDias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 </div>
 
 <script>
-window.CALENDARIO_DATA = <?= json_encode($porFecha, JSON_UNESCAPED_UNICODE) ?>;
+window.CALENDARIO_DATA = <?= jsonJs($porFecha, JSON_UNESCAPED_UNICODE) ?>;
 window.CALENDARIO_AÑO_ACTIVO = <?= (int)$añoActivo ?>;
 </script>
 <script src="/assets/js/calendario.js"></script>

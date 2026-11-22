@@ -55,7 +55,7 @@ if ($action === 'guardar') {
     // Password opcional
     $pass = $_POST['password'] ?? '';
     if ($pass !== '') {
-        $val = validarPassword($pass);
+        $val = validarPassword($pass, $dni);
         if (!$val['ok']) jsonResponse(['ok' => false, 'mensaje' => $val['msg']]);
     } else {
         $pass = null;

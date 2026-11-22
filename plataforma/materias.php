@@ -388,7 +388,7 @@ foreach ($divisionesVisibles as $div) {
                                 <?php if ($puedeEditar): ?>
                                     <div style="display:flex; gap:0.35rem; flex-shrink:0;">
                                         <button type="button" class="btn-secundario" style="padding:0.3rem 0.6rem; font-size:0.8rem;"
-                                            onclick='abrirEditarPubMat(<?= json_encode(["id" => $pubId, "titulo" => $p["titulo"], "contenido" => $p["contenido"], "año_lectivo" => $pubAño]) ?>)'>✏️</button>
+                                            onclick='abrirEditarPubMat(<?= jsonJs(["id" => $pubId, "titulo" => $p["titulo"], "contenido" => $p["contenido"], "año_lectivo" => $pubAño]) ?>)'>✏️</button>
                                         <button type="button" class="btn-peligro-sm" onclick="eliminarPubMat('<?= h($pubId) ?>')">🗑️</button>
                                     </div>
                                 <?php endif; ?>

@@ -3,6 +3,14 @@ function h(?string $s): string {
     return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * json_encode seguro para incrustar en <script> o dentro de atributos HTML (onclick='...').
+ * Escapa < > & ' " como \uXXXX, así un dato con "</script>" o comillas no puede salirse del contexto.
+ */
+function jsonJs($v, int $flags = 0): string {
+    return json_encode($v, $flags | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}
+
 function redirect(string $url): void {
     header('Location: ' . $url);
     exit;
@@ -15,10 +23,33 @@ function jsonResponse(array $data, int $code = 200): void {
     exit;
 }
 
-function validarPassword(string $p): array {
-    $len = strlen($p);
+/**
+ * Excepción cuyo mensaje SÍ es apto para mostrar al usuario final.
+ * Cualquier otra excepción se registra en el log y se responde con un mensaje genérico.
+ */
+class MensajeUsuarioException extends Exception {}
+
+function respuestaErrorInterno(Throwable $e, string $contexto): void {
+    if ($e instanceof MensajeUsuarioException) {
+        jsonResponse(['ok' => false, 'mensaje' => $e->getMessage()], 400);
+    }
+    error_log($contexto . ' ERROR: ' . $e->getMessage());
+    jsonResponse(['ok' => false, 'mensaje' => 'Ocurrió un error en el servidor. Intentá de nuevo.'], 500);
+}
+
+function validarPassword(string $p, ?string $dni = null): array {
+    $len = mb_strlen($p);
     if ($len < PASSWORD_MIN) return ['ok' => false, 'msg' => 'Mínimo ' . PASSWORD_MIN . ' caracteres'];
     if ($len > PASSWORD_MAX) return ['ok' => false, 'msg' => 'Máximo ' . PASSWORD_MAX . ' caracteres'];
+    if (!preg_match('/\p{L}/u', $p) || !preg_match('/\d/', $p)) {
+        return ['ok' => false, 'msg' => 'Debe incluir al menos una letra y un número'];
+    }
+    if (strcasecmp($p, PASSWORD_TEMPORAL) === 0) {
+        return ['ok' => false, 'msg' => 'No podés usar la contraseña temporal; elegí una nueva'];
+    }
+    if ($dni !== null && $dni !== '' && strcasecmp($p, $dni) === 0) {
+        return ['ok' => false, 'msg' => 'La contraseña no puede ser igual a tu DNI'];
+    }
     return ['ok' => true];
 }
 
@@ -36,7 +67,7 @@ function esDocenteOAdmin(): bool {
 
 function fotoPerfilUrl(?string $foto): string {
     if (!empty($foto)) return $foto;
-    return 'https://www.pngall.com/wp-content/uploads/5/Profile-PNG-Pic.png';
+    return '/assets/img/avatar_default.svg';
 }
 
 function añoLectivoActual(PDO $pdo, int $institucionId): int {

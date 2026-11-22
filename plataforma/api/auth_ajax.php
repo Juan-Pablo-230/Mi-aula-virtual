@@ -8,6 +8,7 @@ if ($action === 'login') {
     $dni = trim($_POST['dni'] ?? '');
     $pass = $_POST['password'] ?? '';
     if (!$dni || !$pass) jsonResponse(['ok' => false, 'mensaje' => 'Completá los campos']);
-    jsonResponse(Auth::login($pdo, $dni, $pass));
+    $r = Auth::login($pdo, $dni, $pass, $mongoDB);
+    jsonResponse($r, http_response_code() ?: 200); // conserva el 429 si hubo bloqueo
 }
 jsonResponse(['ok' => false, 'mensaje' => 'Acción desconocida'], 400);

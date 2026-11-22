@@ -108,7 +108,7 @@ try {
                     $familiar = $stmt->fetch();
                     if ($familiar) {
                         if (!in_array($familiar['rol'], ['familiar', 'alumno'])) {
-                            throw new Exception("El DNI $dniFamiliar ya está registrado como {$familiar['rol']}");
+                            throw new MensajeUsuarioException("El DNI $dniFamiliar ya está registrado como {$familiar['rol']}");
                         }
                         $familiarId = (int)$familiar['id'];
                         if ($familiar['rol'] === 'alumno') {
@@ -277,5 +277,5 @@ try {
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('usuarios_ajax ERROR: ' . $e->getMessage());
-    jsonResponse(['ok' => false, 'mensaje' => $e->getMessage()], 500);
+    respuestaErrorInterno($e, 'usuarios_ajax');
 }

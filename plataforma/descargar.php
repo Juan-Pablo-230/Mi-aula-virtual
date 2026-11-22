@@ -5,11 +5,11 @@ require_once __DIR__ . '/core/Helpers.php';
 
 Auth::checkRole(ROLES_ALL);
 $id = $_GET['id'] ?? '';
-if (!$id) die('ID requerido');
+if (!is_string($id) || !preg_match('/^[a-f0-9]{24}$/i', $id)) { http_response_code(400); die('ID inválido'); }
 
 try {
     $doc = $mongoArchivos->findOne(['_id' => new MongoDB\BSON\ObjectId($id)]);
-    if (!$doc) die('Archivo no encontrado');
+    if (!$doc) { http_response_code(404); die('Archivo no encontrado'); }
     $archivoId = $_SESSION['user_id'] ?? 0;
     if (($doc['vt_estado'] ?? '') === 'sospechoso' && ($doc['subido_por'] ?? 0) != $archivoId) {
         if (!isset($_GET['confirmado'])) {
@@ -26,13 +26,26 @@ try {
             exit;
         }
     }
-    $ruta = UPLOAD_DIR . $doc['nombre_guardado'];
-    if (!file_exists($ruta)) die('Archivo no disponible');
-    $esPdf = ($doc['mime'] ?? '') === 'application/pdf';
-    header('Content-Type: ' . ($doc['mime'] ?? 'application/octet-stream'));
-    if (!$esPdf) header('Content-Disposition: attachment; filename="' . basename($doc['nombre_original']) . '"');
-    else header('Content-Disposition: inline; filename="' . basename($doc['nombre_original']) . '"');
+
+    // Defensa contra path traversal: solo el nombre base, y debe quedar dentro de UPLOAD_DIR
+    $ruta = UPLOAD_DIR . basename((string)($doc['nombre_guardado'] ?? ''));
+    if (!is_file($ruta)) { http_response_code(404); die('Archivo no disponible'); }
+
+    // Solo el PDF se muestra en el navegador; todo lo demás se descarga como binario genérico.
+    // Nunca se reenvía un Content-Type controlado por el usuario (evita servir HTML/SVG activos).
+    $esPdf  = ($doc['mime'] ?? '') === 'application/pdf';
+    $nombre = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename((string)($doc['nombre_original'] ?? 'archivo')));
+    $nombre = $nombre !== '' ? $nombre : 'archivo';
+
+    header('Content-Type: ' . ($esPdf ? 'application/pdf' : 'application/octet-stream'));
+    header('X-Content-Type-Options: nosniff');
+    if (!$esPdf) header("Content-Security-Policy: default-src 'none'; sandbox");
+    header('Content-Disposition: ' . ($esPdf ? 'inline' : 'attachment') . '; filename="' . $nombre . '"; filename*=UTF-8\'\'' . rawurlencode($nombre));
     header('Content-Length: ' . filesize($ruta));
     readfile($ruta);
     exit;
-} catch (Exception $e) { die('Error: ' . h($e->getMessage())); }
+} catch (Throwable $e) {
+    error_log('descargar ERROR: ' . $e->getMessage());
+    http_response_code(500);
+    die('No se pudo procesar la descarga.');
+}

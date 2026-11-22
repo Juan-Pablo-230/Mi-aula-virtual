@@ -186,8 +186,8 @@ if ($esNueva && esDocenteOAdmin()) {
             </div>
         </form>
         <script>
-        window.OPCIONES_TAREA = <?= json_encode($opciones) ?>;
-        window.DIVISIONES_POR_CURSO = <?= json_encode($divisionesPorCurso) ?>;
+        window.OPCIONES_TAREA = <?= jsonJs($opciones) ?>;
+        window.DIVISIONES_POR_CURSO = <?= jsonJs($divisionesPorCurso) ?>;
         </script>
         <script src="/assets/js/tarea_detalle.js"></script>
         <?php endif; ?>
@@ -398,7 +398,7 @@ $añoTarea = isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : (int)
 </main>
 <script>
 window.MAX_FILE_MB = <?= (float)UPLOAD_MAX_MB ?>;
-window.MAX_FILE_LABEL = <?= json_encode(UPLOAD_MAX_LABEL) ?>;
+window.MAX_FILE_LABEL = <?= jsonJs(UPLOAD_MAX_LABEL) ?>;
 </script>
 <script src="/assets/js/tarea_detalle.js"></script>
 <?php include __DIR__ . '/views/footer.php'; ?>

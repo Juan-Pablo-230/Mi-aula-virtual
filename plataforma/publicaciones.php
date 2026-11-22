@@ -280,7 +280,7 @@ foreach ($pubsRaw as $p) {
                     <?php if ($puedeEditarEsta): ?>
                         <div style="display:flex; gap:0.35rem; flex-shrink:0;">
                             <button type="button" class="btn-secundario" style="padding:0.3rem 0.6rem; font-size:0.8rem;"
-                                onclick='abrirEditarPub(<?= json_encode(["id" => $p["id"], "titulo" => $p["titulo"], "contenido" => $p["contenido"], "año_lectivo" => $p["año_lectivo"]]) ?>)'>✏️</button>
+                                onclick='abrirEditarPub(<?= jsonJs(["id" => $p["id"], "titulo" => $p["titulo"], "contenido" => $p["contenido"], "año_lectivo" => $p["año_lectivo"]]) ?>)'>✏️</button>
                             <button type="button" class="btn-peligro-sm" onclick="eliminarPublicacion('<?= h($p['id']) ?>')">🗑️</button>
                         </div>
                     <?php endif; ?>
@@ -433,7 +433,7 @@ foreach ($pubsRaw as $p) {
 </div>
 <script>
 window.CICLO_ACTIVO_AÑO = <?= (int)$añoActual ?>;
-window.DIVISIONES_POR_CURSO = <?= json_encode($divisionesPorCurso) ?>;
+window.DIVISIONES_POR_CURSO = <?= jsonJs($divisionesPorCurso) ?>;
 </script>
 <script src="/assets/js/publicaciones.js?v=<?= time() ?>"></script>
 <?php endif; ?>

@@ -114,6 +114,11 @@ document.getElementById('formTransferir')?.addEventListener('submit', async (e) 
 // ============================================================
 // MODAL CREAR/EDITAR (igual que antes)
 // ============================================================
+// Escapa texto antes de insertarlo con innerHTML (evita XSS por nombres de curso/división/materia)
+function escHtmlIU(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function actualizarAsignacionForm() {
     const rol = document.getElementById('userRol').value;
     const seccion = document.getElementById('seccionAsignacion');
@@ -126,7 +131,7 @@ function actualizarAsignacionForm() {
         let html = `<label>División <select name="division_id" id="selectDivisionAlumno"><option value="0">— Sin división —</option>`;
         (window.DIVISIONES || []).forEach(d => {
             const sel = (d.id == divisionActual) ? 'selected' : '';
-            html += `<option value="${d.id}" ${sel}>${d.asignacion} ${d.nombre}</option>`;
+            html += `<option value="${escHtmlIU(d.id)}" ${sel}>${escHtmlIU(d.asignacion)} ${escHtmlIU(d.nombre)}</option>`;
         });
         html += `</select></label>`;
         cont.innerHTML = html;
@@ -136,17 +141,17 @@ function actualizarAsignacionForm() {
         const materiasPorDivision = {};
         (window.DIVISIONES || []).forEach(d => materiasPorDivision[d.id] = materiasCompatiblesConDivision(d.id));
         let html = `<div class="tabla-asignaciones"><table style="width:100%; border-collapse:collapse; font-size:0.82rem;"><thead><tr><th style="text-align:left; padding:0.4rem;">División \\ Materia</th>`;
-        (window.MATERIAS || []).forEach(m => { html += `<th style="padding:0.4rem; font-size:0.72rem;">${m.nombre}</th>`; });
+        (window.MATERIAS || []).forEach(m => { html += `<th style="padding:0.4rem; font-size:0.72rem;">${escHtmlIU(m.nombre)}</th>`; });
         html += `</tr></thead><tbody>`;
         (window.DIVISIONES || []).forEach(d => {
             const compatibles = materiasPorDivision[d.id] || [];
-            html += `<tr><td style="padding:0.4rem; white-space:nowrap;">${d.asignacion} ${d.nombre}</td>`;
+            html += `<tr><td style="padding:0.4rem; white-space:nowrap;">${escHtmlIU(d.asignacion)} ${escHtmlIU(d.nombre)}</td>`;
             (window.MATERIAS || []).forEach(m => {
                 const key = `${m.id}-${d.id}`;
                 const checked = asignadas.has(key) ? 'checked' : '';
                 const ok = compatibles.some(x => x.id == m.id);
                 if (!ok) html += `<td style="text-align:center; padding:0.4rem; opacity:0.25;"><input type="checkbox" disabled></td>`;
-                else html += `<td style="text-align:center; padding:0.4rem;"><input type="checkbox" name="asignaciones[]" value="${key}" ${checked}></td>`;
+                else html += `<td style="text-align:center; padding:0.4rem;"><input type="checkbox" name="asignaciones[]" value="${escHtmlIU(key)}" ${checked}></td>`;
             });
             html += `</tr>`;
         });

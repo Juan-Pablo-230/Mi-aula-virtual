@@ -190,5 +190,5 @@ try {
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('instituciones_ajax ERROR: ' . $e->getMessage());
-    jsonResponse(['ok' => false, 'mensaje' => $e->getMessage()], 500);
+    respuestaErrorInterno($e, 'instituciones_ajax');
 }
