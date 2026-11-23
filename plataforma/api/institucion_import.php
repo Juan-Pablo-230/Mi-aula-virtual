@@ -28,6 +28,7 @@ while (($row = fgetcsv($f)) !== false) {
         $resultado[] = "Línea $linea: rol inválido ($rol)"; continue;
     }
     if ($dni === '') { $resultado[] = "Línea $linea: DNI vacío"; continue; }
+    if (!dniValido($dni)) { $resultado[] = "Línea $linea: DNI inválido (solo números, 6 a 12 dígitos)"; continue; }
     if (UserModel::findByDni($pdo, $dni)) { $resultado[] = "Línea $linea: DNI $dni ya existe (omitido)"; continue; }
     try {
         $id = UserModel::create($pdo, [

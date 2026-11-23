@@ -3,12 +3,14 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/FileHandler.php';
+require_once __DIR__ . '/../core/Acceso.php';
 
 use MongoDB\BSON\ObjectId;
 use MongoDB\BSON\UTCDateTime;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(ROLES_DOCENTES);
+$yo = Acceso::yo();
 
 $action = $_GET['action'] ?? '';
 
@@ -76,6 +78,9 @@ try {
                     $divisionesIds = [$divisionId];
                 }
                 if (empty($divisionesIds)) jsonResponse(['ok' => false, 'mensaje' => 'No hay divisiones disponibles para esta materia'], 400);
+                if (!Acceso::puedeCrearEn($pdo, $yo, $materiaId, $divisionesIds)) {
+                    jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso para publicar en esa materia o división'], 403);
+                }
             }
 
             $stmtAutor = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
@@ -130,9 +135,7 @@ try {
             catch (Exception $e) { jsonResponse(['ok' => false, 'mensaje' => 'ID inválido'], 400); }
             if (!$pub) jsonResponse(['ok' => false, 'mensaje' => 'Publicación no encontrada'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario', 'madre']);
-            $esDueno = (int)$pub['autor_id'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
+            if (!Acceso::puedeAdministrarPublicacion($pdo, $yo, $pub)) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
 
             $mongoPublicaciones->updateOne(
                 ['_id' => $pub['_id']],
@@ -154,10 +157,9 @@ try {
             if (!$divisionId) jsonResponse(['ok' => false, 'mensaje' => 'Seleccioná una división'], 400);
             if (empty($_FILES['archivo']['tmp_name'])) jsonResponse(['ok' => false, 'mensaje' => 'Seleccioná un archivo'], 400);
 
-            if ($_SESSION['rol'] === 'docente') {
-                $stmt = $pdo->prepare("SELECT 1 FROM asignaciones_docente WHERE docente_id = ? AND materia_id = ?");
-                $stmt->execute([$_SESSION['user_id'], $materiaId]);
-                if (!$stmt->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Sin acceso a la materia'], 403);
+            // Docente: solo sus materias/divisiones. Directivo: solo su institución.
+            if (!Acceso::puedeCrearEn($pdo, $yo, $materiaId, [$divisionId])) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Sin acceso a esa materia o división'], 403);
             }
 
             $fh = new FileHandler($mongoArchivos);
@@ -185,9 +187,7 @@ try {
             try { $bib = $mongoBibliografia->findOne(['_id' => new ObjectId($bibId)]); } catch (Exception $e) { jsonResponse(['ok' => false, 'mensaje' => 'ID inválido'], 400); }
             if (!$bib) jsonResponse(['ok' => false, 'mensaje' => 'No encontrado'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario', 'madre']);
-            $esDueno = (int)$bib['subido_por'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
+            if (!Acceso::puedeAdministrarBibliografia($pdo, $yo, $bib)) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
 
             $mongoBibliografia->deleteOne(['_id' => $bib['_id']]);
             jsonResponse(['ok' => true]);
@@ -200,9 +200,7 @@ try {
             try { $pub = $mongoPublicaciones->findOne(['_id' => new ObjectId($pubId)]); } catch (Exception $e) { jsonResponse(['ok' => false, 'mensaje' => 'ID inválido'], 400); }
             if (!$pub) jsonResponse(['ok' => false, 'mensaje' => 'No encontrada'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario', 'madre']);
-            $esDueno = (int)$pub['autor_id'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
+            if (!Acceso::puedeAdministrarPublicacion($pdo, $yo, $pub)) jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
 
             $mongoPublicaciones->deleteOne(['_id' => $pub['_id']]);
             jsonResponse(['ok' => true]);

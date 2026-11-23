@@ -32,6 +32,7 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
     <link rel="shortcut icon" href="/assets/img/icon.png" type="image/x-icon">
     <link rel="stylesheet" href="/assets/css/aulaviva.css">
     <script src="/assets/js/aulaviva.js"></script>
+    <script src="/assets/js/dni-numerico.js"></script>
 </head>
 <body>
 

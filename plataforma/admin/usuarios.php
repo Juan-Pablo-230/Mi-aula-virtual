@@ -164,7 +164,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
             <input type="hidden" name="id" id="userId">
             <label>Nombre <input type="text" name="nombre" id="userNombre" required></label>
             <label>Apellido <input type="text" name="apellido" id="userApellido" required></label>
-            <label>DNI <input type="text" name="dni" id="userDni" required pattern="[0-9A-Za-z]+"></label>
+            <label>DNI <input type="text" name="dni" id="userDni" required inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12"></label>
             <div id="campoEmail" style="display:none;">
                 <label>Email (opcional) <input type="email" name="email" id="userEmail"></label>
             </div>
@@ -185,7 +185,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
             <div id="campoFamiliar" style="display:none;">
                 <hr style="border-color: var(--borde-vidrio); margin: 1rem 0;">
                 <h4 style="margin-bottom: 0.5rem; color: #7dd3fc;">Familiar / Tutor</h4>
-                <label>DNI del familiar <input type="text" name="dni_familiar" id="dniFamiliar" pattern="[0-9A-Za-z]+"></label>
+                <label>DNI del familiar <input type="text" name="dni_familiar" id="dniFamiliar" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12"></label>
                 <label>Nombre del familiar (opcional) <input type="text" name="nombre_familiar" id="nombreFamiliar"></label>
             </div>
             <div id="campoPasswordInfo">

@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -200,8 +201,14 @@ if (!$id) redirect('/plataforma/tareas.php');
 try { $tarea = $mongoDB->selectCollection('tareas')->findOne(['_id' => new MongoDB\BSON\ObjectId($id)]); } catch (Exception $e) { die('ID inválido'); }
 if (!$tarea) die('Tarea no encontrada');
 
+// Autorización: solo ven la tarea quienes pertenecen a su materia/división/institución
+$yo = Acceso::yo();
+if (!Acceso::puedeVerTarea($pdo, $yo, $tarea)) {
+    http_response_code(403);
+    die('No tenés acceso a esta tarea.');
+}
 $soyDocente = ($rol === 'docente' && (int)$tarea['docente_id'] === (int)$user['id']);
-$soyAdmin   = in_array($rol, ['directivo', 'secretario']);
+$soyAdmin   = in_array($rol, ['directivo', 'secretario']) && Acceso::puedeAdministrarTarea($pdo, $yo, $tarea);
 $puedoEditar = $soyDocente || $soyAdmin;
 
 $errorEdit = '';
@@ -224,7 +231,11 @@ if ($esEditar && $puedoEditar && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $miEntrega = null; $error = '';
 if ($rol === 'alumno') {
     $miEntrega = $mongoDB->selectCollection('entregas')->findOne(['tarea_id' => $tarea['_id'], 'alumno_id' => (int)$user['id']]);
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['entregar'])) {
+    // Una entrega aprobada no se puede volver a enviar; solo si el docente la marcó para rehacer.
+    $puedeEntregar = !$miEntrega || ($miEntrega['estado'] ?? '') !== 'aprobada';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['entregar']) && !$puedeEntregar) {
+        $error = 'Esta tarea ya fue aprobada y no se puede enviar nuevamente.';
+    } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['entregar'])) {
         $comentarioAlumno = trim($_POST['comentario_alumno'] ?? '');
         $archivoSubido = !empty($_FILES['archivo']['tmp_name']);
         if (!$archivoSubido && $comentarioAlumno === '') $error = 'Adjuntá archivo o comentario.';
@@ -240,7 +251,7 @@ if ($rol === 'alumno') {
                 else { $archivoId = new MongoDB\BSON\ObjectId($r['archivo_id']); $archivoNombre = $r['nombre']; $vtEstado = $r['estado']; }
             }
             if (!$error) {
-                $doc = ['tarea_id' => $tarea['_id'], 'alumno_id' => (int)$user['id'], 'archivo_id' => $archivoId, 'archivo_nombre' => $archivoNombre, 'vt_estado' => $vtEstado, 'comentario_alumno' => $comentarioAlumno ?: null, 'estado' => 'entregada', 'calificacion' => null, 'nota_numerica' => null, 'comentario' => null, 'fecha_entrega' => new MongoDB\BSON\UTCDateTime()];
+                $doc = ['tarea_id' => $tarea['_id'], 'alumno_id' => (int)$user['id'], 'archivo_id' => $archivoId, 'archivo_nombre' => $archivoNombre, 'vt_estado' => $vtEstado, 'comentario_alumno' => $comentarioAlumno ?: null, 'estado' => 'entregada', 'calificacion' => null, 'nota_numerica' => null, 'vista_calificacion' => null, 'comentario' => null, 'fecha_entrega' => new MongoDB\BSON\UTCDateTime()];
                 if ($miEntrega) $mongoDB->selectCollection('entregas')->updateOne(['_id' => $miEntrega['_id']], ['$set' => $doc]);
                 else $mongoDB->selectCollection('entregas')->insertOne($doc);
                 redirect('/plataforma/tarea_detalle.php?id=' . $id);
@@ -315,18 +326,31 @@ $añoTarea = isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : (int)
                 <h2>Mi entrega</h2>
                 <?php if (!empty($error)): ?><div class="alerta danger"><?= h($error) ?></div><?php endif; ?>
                 <?php if ($miEntrega): ?>
-                    <p>Estado: <span class="badge"><?= h(ucfirst($miEntrega['estado'])) ?></span></p>
+                    <p>Estado: <span class="badge"><?= h(($miEntrega['estado'] ?? '') === 'rechazada' ? 'Rehacer' : ucfirst($miEntrega['estado'])) ?></span></p>
                     <?php if (!empty($miEntrega['comentario_alumno'])): ?><p><strong>Mi comentario:</strong> <?= nl2br(h($miEntrega['comentario_alumno'])) ?></p><?php endif; ?>
                     <?php if (!empty($miEntrega['archivo_id'])): ?><p><a class="btn-secundario" href="/plataforma/descargar.php?id=<?= h((string)$miEntrega['archivo_id']) ?>" target="_blank">📎 Mi archivo</a></p><?php endif; ?>
-                    <?php if (!empty($miEntrega['calificacion'])): ?><p><strong>Calificación:</strong> <?= h($miEntrega['calificacion']) ?></p><?php endif; ?>
+                    <?php
+                        $vista = $miEntrega['vista_calificacion'] ?? 'letras';
+                        $califMostrar = null;
+                        if ($vista === 'numerica') {
+                            if (($miEntrega['nota_numerica'] ?? null) !== null) $califMostrar = rtrim(rtrim(number_format((float)$miEntrega['nota_numerica'], 2, '.', ''), '0'), '.');
+                        } elseif (!empty($miEntrega['calificacion'])) {
+                            $califMostrar = $miEntrega['calificacion'];
+                        }
+                    ?>
+                    <?php if ($califMostrar !== null): ?><p><strong>Calificación:</strong> <?= h($califMostrar) ?></p><?php endif; ?>
+                    <?php if (($miEntrega['estado'] ?? '') === 'rechazada'): ?><div class="alerta info">🔁 Tu docente pidió que rehagas esta tarea. Podés enviarla nuevamente.</div><?php endif; ?>
+                    <?php if (!$puedeEntregar): ?><div class="alerta info">✅ Tarea aprobada: no se puede enviar nuevamente.</div><?php endif; ?>
                     <?php if (!empty($miEntrega['comentario'])): ?><p><strong>Comentario del docente:</strong> <?= nl2br(h($miEntrega['comentario'])) ?></p><?php endif; ?>
                 <?php endif; ?>
+                <?php if ($puedeEntregar): ?>
                 <form method="post" enctype="multipart/form-data" style="margin-top:1rem;" onsubmit="return validarEntrega(this);">
                     <input type="hidden" name="entregar" value="1">
                     <label>Comentario <textarea name="comentario_alumno" rows="3"><?= h($miEntrega['comentario_alumno'] ?? '') ?></textarea></label>
                     <label>Archivo <input type="file" name="archivo" id="tareaArchivo" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z"></label>
                     <div class="form-acciones"><button class="btn-primario" type="submit" id="btnEntregar">Enviar</button></div>
                 </form>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
@@ -346,9 +370,9 @@ $añoTarea = isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : (int)
                                     <td><?= h($alNom) ?></td>
                                     <td><?= h($fe->format('d/m/Y H:i')) ?></td>
                                     <td><?php if (!empty($e['archivo_id'])): ?><a href="/plataforma/descargar.php?id=<?= h((string)$e['archivo_id']) ?>" target="_blank">📎</a><?php else: ?>—<?php endif; ?></td>
-                                    <td><span class="badge"><?= h(ucfirst($e['estado'])) ?></span></td>
+                                    <td><span class="badge"><?= h(($e['estado'] ?? '') === 'rechazada' ? 'Rehacer' : ucfirst($e['estado'])) ?></span></td>
                                     <td><?= h($e['calificacion'] ?? '—') ?></td>
-                                    <td><button type="button" class="btn-secundario" onclick="abrirCalificar('<?= h((string)$e['_id']) ?>', '<?= h($alNom) ?>', '<?= h($e['calificacion'] ?? '') ?>', <?= $e['nota_numerica'] !== null ? $e['nota_numerica'] : 'null' ?>, '<?= h(addslashes($e['comentario'] ?? '')) ?>', '<?= h($e['estado'] ?? 'entregada') ?>')">Calificar</button></td>
+                                    <td><button type="button" class="btn-secundario" onclick="abrirCalificar('<?= h((string)$e['_id']) ?>', '<?= h($alNom) ?>', '<?= h($e['calificacion'] ?? '') ?>', <?= $e['nota_numerica'] !== null ? $e['nota_numerica'] : 'null' ?>, '<?= h(addslashes($e['comentario'] ?? '')) ?>', '<?= h($e['estado'] ?? 'entregada') ?>', '<?= h($e['vista_calificacion'] ?? 'letras') ?>')">Calificar</button></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -368,12 +392,17 @@ $añoTarea = isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : (int)
                             </select>
                         </label>
                         <label>Nota (0-10) <input type="number" name="nota_numerica" min="0" max="10" step="0.01"></label>
+                        <label>Mostrar al alumno
+                            <select name="vista_calificacion">
+                                <option value="letras">Calificación en letras</option>
+                                <option value="numerica">Nota numérica</option>
+                            </select>
+                        </label>
                         <label>Comentario <textarea name="comentario" rows="3"></textarea></label>
                         <label>Estado
                             <select name="estado">
                                 <option value="aprobada">Aprobada</option>
-                                <option value="rechazada">Rechazada</option>
-                                <option value="entregada">Entregada (sin corregir)</option>
+                                <option value="rechazada">Rehacer (el alumno podrá reenviar)</option>
                             </select>
                         </label>
                         <div class="modal-acciones">

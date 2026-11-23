@@ -2,12 +2,14 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
+require_once __DIR__ . '/../core/Acceso.php';
 require_once __DIR__ . '/../core/GradeHelpers.php';
 
 use MongoDB\BSON\ObjectId;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(ROLES_DOCENTES);
+$yo = Acceso::yo();
 
 $action = $_GET['action'] ?? '';
 
@@ -31,15 +33,9 @@ try {
             }
 
             // Validar que el docente tenga acceso a la materia
-            if ($_SESSION['rol'] === 'docente') {
-                $stmt = $pdo->prepare("
-                    SELECT 1 FROM asignaciones_docente
-                    WHERE docente_id = ? AND materia_id = ?
-                ");
-                $stmt->execute([$_SESSION['user_id'], $materiaId]);
-                if (!$stmt->fetchColumn()) {
-                    jsonResponse(['ok' => false, 'mensaje' => 'No tenés acceso a esa materia'], 403);
-                }
+            // Docente: solo alumnos de SUS divisiones; directivo: solo su institución
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'No tenés acceso a ese alumno en esa materia'], 403);
             }
 
             $mongoDB->selectCollection('calificaciones_extra')->insertOne([
@@ -73,9 +69,8 @@ try {
             }
             if (!$extra) jsonResponse(['ok' => false, 'mensaje' => 'Nota no encontrada'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario']);
             $esDueno = (int)$extra['creada_por'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) {
+            if (!$esDueno && !Acceso::puedeGestionarAlumnoMateria($pdo, $yo, (int)$extra['alumno_id'], (int)$extra['materia_id'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
             }
 
@@ -102,15 +97,9 @@ try {
                 jsonResponse(['ok' => false, 'mensaje' => 'Formato inválido'], 400);
             }
 
-            if ($_SESSION['rol'] === 'docente') {
-                $stmt = $pdo->prepare("
-                    SELECT 1 FROM asignaciones_docente
-                    WHERE docente_id = ? AND materia_id = ?
-                ");
-                $stmt->execute([$_SESSION['user_id'], $materiaId]);
-                if (!$stmt->fetchColumn()) {
-                    jsonResponse(['ok' => false, 'mensaje' => 'No tenés acceso a esa materia'], 403);
-                }
+            // Docente: solo alumnos de SUS divisiones; directivo: solo su institución
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'No tenés acceso a ese alumno en esa materia'], 403);
             }
 
             // Calcular el promedio actual

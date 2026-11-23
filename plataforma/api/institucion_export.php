@@ -25,6 +25,6 @@ header('Content-Disposition: attachment; filename="usuarios_' . $slug . '_' . da
 $out = fopen('php://output', 'w');
 fputs($out, "\xEF\xBB\xBF");
 fputcsv($out, ['apellido','nombre','dni','email','rol']);
-while ($u = $stmt->fetch(PDO::FETCH_ASSOC)) fputcsv($out, $u);
+while ($u = $stmt->fetch(PDO::FETCH_ASSOC)) fputcsv($out, array_map('csvSeguro', $u));
 fclose($out);
 exit;

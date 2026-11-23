@@ -7,19 +7,24 @@
  * Si se accede por fetch (X-Requested-With: fetch), devuelve solo el
  * fragmento HTML del formulario (sin <html>, <body>, etc.).
  */
-require_once __DIR__ . '/plataforma/config/database.php';
-require_once __DIR__ . '/plataforma/core/Auth.php';
-require_once __DIR__ . '/plataforma/core/Helpers.php';
+// Liviano a propósito: este archivo lo ve cualquier visitante anónimo, así que NO se conecta a
+// MariaDB/Mongo ni se crea una sesión salvo que el navegador ya traiga una cookie de sesión
+// (para redirigir a quien ya inició sesión). Evita que abrir el modal consuma recursos del servidor.
+require_once __DIR__ . '/plataforma/core/Security.php';
+aplicarCabecerasSeguridad();
 
 $esFragmento = (
     (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'fetch')
     || (isset($_GET['fragmento']) && $_GET['fragmento'] === '1')
 );
 
-// Si ya está logueado, redirigir
-if (isset($_SESSION['user_id'])) {
-    header('Location: /plataforma/publicaciones.php');
-    exit;
+// Si ya está logueado, redirigir (solo si hay cookie de sesión previa)
+if (isset($_COOKIE[session_name()])) {
+    require_once __DIR__ . '/plataforma/config/database.php'; // inicia la sesión
+    if (isset($_SESSION['user_id'])) {
+        header('Location: /plataforma/publicaciones.php');
+        exit;
+    }
 }
 
 $expirada = isset($_GET['expirada']) && $_GET['expirada'] === '1';
@@ -34,10 +39,10 @@ if ($esFragmento) {
         <?php endif; ?>
         <form id="formLogin">
             <label>DNI
-                <input type="text" name="dni" placeholder="Ingresá tu DNI" autocomplete="username" required>
+                <input type="text" name="dni" placeholder="Ingresá tu DNI" autocomplete="username" inputmode="numeric" pattern="[0-9]*" maxlength="12" required>
             </label>
             <label>Contraseña
-                <input type="password" name="password" placeholder="Mínimo 8 caracteres" minlength="8" maxlength="20" autocomplete="current-password" required>
+                <input type="password" name="password" placeholder="Mínimo 8 caracteres" maxlength="128" autocomplete="current-password" required>
             </label>
             <div id="loginError" class="alerta danger" style="display:none;"></div>
             <div class="modal-acciones">
@@ -79,10 +84,10 @@ if ($esFragmento) {
         <?php endif; ?>
         <form id="formLogin">
             <label>DNI
-                <input type="text" name="dni" placeholder="Ingresá tu DNI" autocomplete="username" required>
+                <input type="text" name="dni" placeholder="Ingresá tu DNI" autocomplete="username" inputmode="numeric" pattern="[0-9]*" maxlength="12" required>
             </label>
             <label>Contraseña
-                <input type="password" name="password" placeholder="Mínimo 8 caracteres" minlength="8" maxlength="20" autocomplete="current-password" required>
+                <input type="password" name="password" placeholder="Mínimo 8 caracteres" maxlength="128" autocomplete="current-password" required>
             </label>
             <div id="loginError" class="alerta danger" style="display:none;"></div>
             <div class="modal-acciones">
@@ -93,6 +98,7 @@ if ($esFragmento) {
     </div>
 </main>
 
+<script src="/assets/js/dni-numerico.js"></script>
 <script>
 document.getElementById('formLogin').addEventListener('submit', async (e) => {
     e.preventDefault();

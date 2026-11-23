@@ -178,7 +178,16 @@ foreach ($alumnos as $a) {
                             <tr>
                                 <td><?= h($c['concepto']) ?></td>
                                 <td><?= $c['origen'] === 'tarea' ? '📝 Tarea' : '➕ Extra' ?></td>
-                                <td><?= h($c['calificacion'] ?? number_format((float)$c['nota_numerica'], 2)) ?></td>
+                                <td><?php
+                                    $soloAlumno = in_array($rol, ['alumno', 'familiar'], true);
+                                    if ($soloAlumno && ($c['origen'] ?? '') === 'tarea' && ($c['vista'] ?? 'letras') === 'numerica' && $c['nota_numerica'] !== null) {
+                                        echo h(number_format((float)$c['nota_numerica'], 2));
+                                    } elseif ($soloAlumno && ($c['origen'] ?? '') === 'tarea' && ($c['vista'] ?? 'letras') === 'letras' && !empty($c['calificacion'])) {
+                                        echo h($c['calificacion']);
+                                    } else {
+                                        echo h($c['calificacion'] ?? number_format((float)$c['nota_numerica'], 2));
+                                    }
+                                ?></td>
                                 <?php if ($puedeCalificar): ?>
                                     <td><?php if ($c['origen'] === 'extra'): ?><button class="btn-peligro-sm" onclick="eliminarExtra('<?= h($c['id']) ?>')">🗑️</button><?php endif; ?></td>
                                 <?php endif; ?>

@@ -67,7 +67,10 @@ try {
             if ($nombre === '' || $apellido === '' || $dni === '') {
                 jsonResponse(['ok' => false, 'mensaje' => 'Nombre, apellido y DNI son obligatorios'], 400);
             }
-            if (!preg_match('/^[0-9A-Za-z]{6,20}$/', $dni)) {
+            if (!dniValido($dni)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido: solo números (6 a 12 dígitos)'], 400);
+            }
+            if (!dniValido($dni)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido'], 400);
             }
             if (!in_array($rol, ['alumno','docente','secretario','directivo','familiar'])) {
@@ -97,10 +100,11 @@ try {
 
             if ($rol === 'alumno') {
                 $divisionId = (int)($_POST['division_id'] ?? 0);
-                if ($divisionId > 0) {
-                    $pdo->prepare("INSERT INTO alumnos_division (alumno_id, division_id) VALUES (?, ?)")->execute([$id, $divisionId]);
-                }
+                AcademicModel::asignarDivisionAlumno($pdo, (int)$id, $divisionId);
                 $dniFamiliar = trim($_POST['dni_familiar'] ?? '');
+                if ($dniFamiliar !== '' && !dniValido($dniFamiliar)) {
+                    throw new MensajeUsuarioException('DNI del familiar inválido: solo números (6 a 12 dígitos)');
+                }
                 $nombreFamiliar = trim($_POST['nombre_familiar'] ?? '');
                 if ($dniFamiliar !== '') {
                     $stmt = $pdo->prepare("SELECT id, rol FROM usuarios WHERE dni = ?");
@@ -164,6 +168,9 @@ try {
             if ($nombre === '' || $apellido === '' || $dni === '') {
                 jsonResponse(['ok' => false, 'mensaje' => 'Nombre, apellido y DNI son obligatorios'], 400);
             }
+            if (!dniValido($dni)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido: solo números (6 a 12 dígitos)'], 400);
+            }
             if (!in_array($rol, ['alumno','docente','secretario','directivo','familiar'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Rol inválido'], 400);
             }
@@ -183,16 +190,17 @@ try {
                 'activo'   => (int)$activo
             ]);
 
-            $pdo->prepare("DELETE FROM alumnos_division WHERE alumno_id = ?")->execute([$id]);
+            if ($rol !== 'alumno') AcademicModel::asignarDivisionAlumno($pdo, (int)$id, 0);
             $pdo->prepare("DELETE FROM asignaciones_docente WHERE docente_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM familiares_alumnos WHERE alumno_id = ?")->execute([$id]);
 
             if ($rol === 'alumno') {
                 $divisionId = (int)($_POST['division_id'] ?? 0);
-                if ($divisionId > 0) {
-                    $pdo->prepare("INSERT INTO alumnos_division (alumno_id, division_id) VALUES (?, ?)")->execute([$id, $divisionId]);
-                }
+                AcademicModel::asignarDivisionAlumno($pdo, (int)$id, $divisionId);
                 $dniFamiliar = trim($_POST['dni_familiar'] ?? '');
+                if ($dniFamiliar !== '' && !dniValido($dniFamiliar)) {
+                    throw new MensajeUsuarioException('DNI del familiar inválido: solo números (6 a 12 dígitos)');
+                }
                 if ($dniFamiliar !== '') {
                     $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE dni = ?");
                     $stmt->execute([$dniFamiliar]);

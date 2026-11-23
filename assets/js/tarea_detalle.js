@@ -81,14 +81,15 @@ function validarEntrega(form) {
 // ============================================================
 // MODAL CALIFICAR
 // ============================================================
-function abrirCalificar(id, alumno, calificacion, nota, comentario, estado) {
+function abrirCalificar(id, alumno, calificacion, nota, comentario, estado, vista) {
     document.getElementById('calEntregaId').value = id;
     document.getElementById('calAlumno').textContent = alumno;
     const f = document.getElementById('formCalificar');
     f.calificacion.value = calificacion || '';
     f.nota_numerica.value = nota ?? '';
     f.comentario.value = comentario || '';
-    f.estado.value = estado || 'aprobada';
+    f.estado.value = (estado === 'rechazada') ? 'rechazada' : 'aprobada';
+    f.vista_calificacion.value = (vista === 'numerica') ? 'numerica' : 'letras';
     document.getElementById('modalCalificar').classList.remove('oculto');
 }
 

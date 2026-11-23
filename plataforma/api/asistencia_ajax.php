@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
+require_once __DIR__ . '/../core/Acceso.php';
 require_once __DIR__ . '/../core/Feriados.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -11,6 +12,7 @@ $action = $_GET['action'] ?? '';
 $userId = (int)$_SESSION['user_id'];
 $rol    = $_SESSION['rol'];
 $esDirectivo = in_array($rol, ['directivo', 'secretario', 'madre']);
+$yo = Acceso::yo();
 
 $colAsistencia  = $mongoDB->selectCollection('asistencia');
 $colReglas      = $mongoDB->selectCollection('reglas_asistencia');
@@ -71,6 +73,9 @@ try {
     if (!$materiaId || !is_array($cambios) || empty($cambios)) {
         jsonResponse(['ok' => false, 'mensaje' => 'No hay cambios para guardar'], 400);
     }
+    if (!Acceso::puedeGestionarMateria($pdo, $yo, $materiaId)) {
+        jsonResponse(['ok' => false, 'mensaje' => 'No tenés acceso a esa materia'], 403);
+    }
 
     // Validar domingo (se permite sábado)
     $diaSemana = (int)date('w', strtotime($fecha)); // 0=Domingo
@@ -91,6 +96,8 @@ try {
     foreach ($cambios as $alumnoId => $estado) {
         $alumnoId = (int)$alumnoId;
         if (!in_array($estado, ['presente', 'ausente'])) continue;
+        // Solo alumnos que este usuario puede gestionar en esta materia
+        if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) continue;
 
         // Obtener división
         $stmt = $pdo->prepare("SELECT division_id FROM alumnos_division WHERE alumno_id = ?");
@@ -133,6 +140,9 @@ try {
 
             if (!$materiaId || !$alumnoId || !in_array($estado, ['presente', 'ausente'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Datos inválidos'], 400);
+            }
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso sobre ese alumno en esa materia'], 403);
             }
 
             // Validar domingo (se permite sábado)
@@ -184,6 +194,9 @@ try {
             $materiaId = (int)($_POST['materia_id'] ?? 0);
             $faltasMax = max(1, (int)($_POST['faltas_maximas'] ?? 10));
             if (!$materiaId) jsonResponse(['ok' => false, 'mensaje' => 'Materia requerida'], 400);
+            if (!Acceso::puedeGestionarMateria($pdo, $yo, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Esa materia no pertenece a tu institución'], 403);
+            }
 
             $colReglas->updateOne(
                 ['materia_id' => $materiaId],
@@ -204,6 +217,9 @@ try {
             $alumnoId  = (int)($_POST['alumno_id'] ?? 0);
             $tope      = max(1, (int)($_POST['tope'] ?? 10));
             if (!$materiaId || !$alumnoId) jsonResponse(['ok' => false, 'mensaje' => 'Faltan datos'], 400);
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Ese alumno o materia no pertenece a tu institución'], 403);
+            }
 
             $colTopesAlumno->updateOne(
                 ['materia_id' => $materiaId, 'alumno_id' => $alumnoId],
@@ -223,6 +239,9 @@ try {
             $alumnoId  = (int)($_POST['alumno_id'] ?? 0);
             $materiaId = (int)($_POST['materia_id'] ?? 0);
             if (!$alumnoId || !$materiaId) jsonResponse(['ok' => false, 'mensaje' => 'Faltan datos'], 400);
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, $alumnoId, $materiaId)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Ese alumno o materia no pertenece a tu institución'], 403);
+            }
 
             $colLibres->deleteOne(['alumno_id' => $alumnoId, 'materia_id' => $materiaId]);
             $colAsistencia->updateMany(

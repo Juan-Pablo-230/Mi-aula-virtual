@@ -89,7 +89,12 @@ if ($rol === 'alumno') {
 // ============================================================
 // EVENTOS (solo del año activo)
 // ============================================================
-$eventos = $mongoDB->selectCollection('eventos_calendario')->find([], ['sort' => ['fecha' => 1], 'limit' => 500])->toArray();
+// Eventos de MI institución + globales (institucion_id null o inexistente, p. ej. eventos antiguos).
+// La cuenta "madre" ve todos.
+$filtroEventos = ($rol === 'madre')
+    ? []
+    : ['$or' => [['institucion_id' => null], ['institucion_id' => $miInst]]];
+$eventos = $mongoDB->selectCollection('eventos_calendario')->find($filtroEventos, ['sort' => ['fecha' => 1], 'limit' => 500])->toArray();
 
 // ============================================================
 // INDEXAR POR Y-M-D

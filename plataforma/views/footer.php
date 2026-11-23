@@ -13,13 +13,16 @@
                 <input type="text" name="apellido" value="<?= h($currentUser['apellido'] ?? '') ?>" required maxlength="100">
             </label>
             <label>DNI
-                <input type="text" name="dni" value="<?= h($currentUser['dni'] ?? '') ?>" required pattern="[0-9A-Za-z]{6,20}" maxlength="20">
+                <input type="text" name="dni" value="<?= h($currentUser['dni'] ?? '') ?>" required inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12">
             </label>
             <label>Correo electrónico (obligatorio)
                 <input type="email" name="email" value="<?= h($currentUser['email'] ?? '') ?>" required>
             </label>
-            <label>Nueva contraseña (opcional, 8-20 caracteres)
-                <input type="password" name="password" minlength="8" maxlength="128">
+            <label>Contraseña actual <small>(obligatoria solo si cambiás DNI, correo o contraseña)</small>
+                <input type="password" name="password_actual" maxlength="128" autocomplete="current-password">
+            </label>
+            <label>Nueva contraseña (opcional, 8-128 caracteres, con letras y números)
+                <input type="password" name="password" minlength="8" maxlength="128" autocomplete="new-password">
             </label>
             <label>Foto de perfil
                 <input type="file" name="foto" accept="image/*">

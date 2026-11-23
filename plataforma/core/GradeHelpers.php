@@ -48,6 +48,7 @@ function obtenerCalificacionesAlumno($mongoDB, int $alumnoId, int $materiaId): a
             'origen'        => 'tarea',
             'calificacion'  => $e['calificacion'] ?? null,
             'nota_numerica' => $e['nota_numerica'] ?? null,
+            'vista'         => $e['vista_calificacion'] ?? 'letras',
             'estado'        => $e['estado'],
             'año_lectivo'   => isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : null,
             'fecha'         => $e['fecha_correccion'] ?? $e['fecha_entrega'] ?? null,

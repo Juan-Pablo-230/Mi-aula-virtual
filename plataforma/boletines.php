@@ -4,6 +4,7 @@ require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/core/GradeHelpers.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -44,7 +45,11 @@ elseif ($rol === 'familiar') {
     $ids = AcademicModel::alumnosDeFamiliar($pdo, $userId);
     $alumnoId = (int)($_GET['alumno_id'] ?? ($ids[0] ?? 0));
     if (!$alumnoId || !in_array($alumnoId, $ids)) die('Alumno inválido');
-} else $alumnoId = (int)($_GET['alumno_id'] ?? 0);
+} else {
+    $alumnoId = (int)($_GET['alumno_id'] ?? 0);
+    // Docentes y directivos solo pueden ver boletines de alumnos de SU institución
+    if ($alumnoId && !Acceso::puedeVerAlumno($pdo, Acceso::yo(), $alumnoId)) die('Alumno inválido');
+}
 
 $materias = $alumnoId ? AcademicModel::materiasAlumnoEnAño($pdo, $alumnoId, $añoSel) : [];
 $boletin = [];

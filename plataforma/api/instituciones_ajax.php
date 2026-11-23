@@ -26,7 +26,7 @@ try {
             if ($emailInst !== '' && !filter_var($emailInst, FILTER_VALIDATE_EMAIL)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Email institucional inválido'], 400);
             }
-            if ($duenioDni === '' || !preg_match('/^[0-9A-Za-z]{6,20}$/', $duenioDni)) {
+            if ($duenioDni === '' || !dniValido($duenioDni)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'DNI del dueño inválido'], 400);
             }
 

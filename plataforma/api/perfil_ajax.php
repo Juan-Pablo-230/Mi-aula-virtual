@@ -27,8 +27,8 @@ if ($action === 'guardar') {
     if ($dni === '') {
         jsonResponse(['ok' => false, 'mensaje' => 'El DNI es obligatorio']);
     }
-    if (!preg_match('/^[0-9A-Za-z]{6,20}$/', $dni)) {
-        jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido (6 a 20 caracteres alfanuméricos)']);
+    if (!dniValido($dni)) {
+        jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido: solo números (6 a 12 dígitos)']);
     }
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         jsonResponse(['ok' => false, 'mensaje' => 'Email inválido']);
@@ -50,6 +50,30 @@ if ($action === 'guardar') {
     $stmt->execute([$email, $id]);
     if ($stmt->fetchColumn()) {
         jsonResponse(['ok' => false, 'mensaje' => 'Email ya en uso']);
+    }
+
+    // Cambiar DNI (es el usuario de login), email o contraseña exige la contraseña ACTUAL:
+    // si alguien se apropia de una sesión abierta no puede quedarse con la cuenta.
+    $pass = $_POST['password'] ?? '';
+    $cambiaCredenciales = ($pass !== '')
+        || ($dni !== (string)$actual['dni'])
+        || (strcasecmp($email, (string)($actual['email'] ?? '')) !== 0);
+    if ($cambiaCredenciales) {
+        // Límite de intentos por sesión (evita adivinar la clave actual a fuerza bruta)
+        $bloqueadoHasta = (int)($_SESSION['pw_bloqueo_hasta'] ?? 0);
+        if ($bloqueadoHasta > time()) {
+            jsonResponse(['ok' => false, 'mensaje' => 'Demasiados intentos. Esperá unos minutos e intentá de nuevo.'], 429);
+        }
+        $passActual = $_POST['password_actual'] ?? '';
+        if (!is_string($passActual) || $passActual === '' || !Auth::verifyPassword($passActual, (string)$actual['password_hash'])) {
+            $_SESSION['pw_fallos'] = (int)($_SESSION['pw_fallos'] ?? 0) + 1;
+            if ($_SESSION['pw_fallos'] >= 5) {
+                $_SESSION['pw_bloqueo_hasta'] = time() + 900;
+                $_SESSION['pw_fallos'] = 0;
+            }
+            jsonResponse(['ok' => false, 'mensaje' => 'Para cambiar tu DNI, email o contraseña ingresá tu contraseña actual correctamente.']);
+        }
+        $_SESSION['pw_fallos'] = 0;
     }
 
     // Password opcional

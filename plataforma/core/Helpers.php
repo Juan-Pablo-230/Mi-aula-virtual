@@ -11,6 +11,15 @@ function jsonJs($v, int $flags = 0): string {
     return json_encode($v, $flags | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 }
 
+/**
+ * Neutraliza "inyección de fórmulas" en CSV: si una celda empieza con = + - @ (o tab/CR),
+ * Excel/Calc la interpretan como fórmula. Se antepone un apóstrofo para que sea texto plano.
+ */
+function csvSeguro($v) {
+    if (is_string($v) && $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false) return "'" . $v;
+    return $v;
+}
+
 function redirect(string $url): void {
     header('Location: ' . $url);
     exit;
@@ -21,6 +30,11 @@ function jsonResponse(array $data, int $code = 200): void {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data);
     exit;
+}
+
+/** DNI válido: solo dígitos, 6 a 12 caracteres. */
+function dniValido(string $dni): bool {
+    return (bool)preg_match('/^[0-9]{6,12}$/', $dni);
 }
 
 /**

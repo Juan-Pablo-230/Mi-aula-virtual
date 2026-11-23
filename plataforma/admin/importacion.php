@@ -28,6 +28,7 @@ if (!empty($_FILES['csv']['tmp_name'])) {
             $resultado[] = "Línea $linea: rol inválido ($rol)"; continue;
         }
         if ($dni === '') { $resultado[] = "Línea $linea: DNI vacío"; continue; }
+    if (!dniValido($dni)) { $resultado[] = "Línea $linea: DNI inválido (solo números, 6 a 12 dígitos)"; continue; }
         if (UserModel::findByDni($pdo, $dni)) { $resultado[] = "Línea $linea: DNI $dni ya existe (omitido)"; continue; }
         try {
             $id = UserModel::create($pdo, [
@@ -61,7 +62,7 @@ if (isset($_GET['export'])) {
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF"); // BOM UTF-8 para Excel
     fputcsv($out, ['apellido','nombre','dni','email','rol','institucion']);
-    while ($u = $stmt->fetch(PDO::FETCH_ASSOC)) fputcsv($out, $u);
+    while ($u = $stmt->fetch(PDO::FETCH_ASSOC)) fputcsv($out, array_map('csvSeguro', $u));
     fclose($out);
     exit;
 }

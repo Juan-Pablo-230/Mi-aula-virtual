@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $id = $_GET['id'] ?? '';
@@ -10,6 +11,13 @@ if (!is_string($id) || !preg_match('/^[a-f0-9]{24}$/i', $id)) { http_response_co
 try {
     $doc = $mongoArchivos->findOne(['_id' => new MongoDB\BSON\ObjectId($id)]);
     if (!$doc) { http_response_code(404); die('Archivo no encontrado'); }
+
+    // Solo quien tiene acceso al mensaje/tarea/entrega/publicación que contiene el archivo.
+    // Se responde 404 (no 403) para no revelar qué IDs existen.
+    if (!Acceso::puedeDescargarArchivo($pdo, $mongoDB, Acceso::yo(), $doc)) {
+        http_response_code(404);
+        die('Archivo no encontrado');
+    }
     $archivoId = $_SESSION['user_id'] ?? 0;
     if (($doc['vt_estado'] ?? '') === 'sospechoso' && ($doc['subido_por'] ?? 0) != $archivoId) {
         if (!isset($_GET['confirmado'])) {

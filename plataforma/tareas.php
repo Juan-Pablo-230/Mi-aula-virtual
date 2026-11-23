@@ -70,6 +70,12 @@ if ($rol === 'docente') {
     } else {
         $filtro['_id'] = ['$in' => []];
     }
+} elseif (in_array($rol, ['directivo', 'secretario'])) {
+    // Directivos: solo tareas de las materias de SU institución
+    $stmt = $pdo->prepare("SELECT id FROM materias WHERE institucion_id = ?");
+    $stmt->execute([$miInst]);
+    $matIdsInst = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    $filtro['materia_id'] = ['$in' => $matIdsInst];
 }
 
 $tareasRaw = $mongoDB->selectCollection('tareas')->find($filtro, ['sort' => ['fecha_vencimiento' => -1], 'limit' => 200])->toArray();

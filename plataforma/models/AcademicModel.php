@@ -118,13 +118,34 @@ class AcademicModel {
         return $stmt->fetchAll();
     }
 
+    /**
+     * Fragmento SQL (subconsulta) que devuelve (division_id, materia_id) para TODAS las
+     * materias que le corresponden a una división:
+     *   - las materias vinculadas al curso/año de la división (materias_asignaciones),
+     *     respetando la orientación (materia sin orientación = común a todas), y
+     *   - las que ya tengan un docente asignado a esa división (asignaciones_docente).
+     * Así el alumno ve todo lo de su año aunque todavía no haya docente cargado.
+     */
+    private static function sqlMateriasDeDivision(): string {
+        return "
+            SELECT d.id AS division_id, ma.materia_id
+            FROM divisiones d
+            JOIN materias_asignaciones ma ON ma.asignacion_id = d.asignacion_id
+            JOIN materias mm ON mm.id = ma.materia_id
+            WHERE mm.orientacion_id IS NULL
+               OR d.orientacion_id IS NULL
+               OR mm.orientacion_id = d.orientacion_id
+            UNION
+            SELECT adoc.division_id, adoc.materia_id FROM asignaciones_docente adoc
+        ";
+    }
+
     public static function materiasAlumno(PDO $pdo, int $alumnoId): array {
         $stmt = $pdo->prepare("
-            SELECT DISTINCT m.id, m.nombre, d.id AS division_id
+            SELECT DISTINCT m.id, m.nombre, ad.division_id AS division_id
             FROM alumnos_division ad
-            JOIN divisiones d ON d.id = ad.division_id
-            JOIN asignaciones_docente adoc ON adoc.division_id = d.id
-            JOIN materias m ON m.id = adoc.materia_id
+            JOIN (" . self::sqlMateriasDeDivision() . ") md ON md.division_id = ad.division_id
+            JOIN materias m ON m.id = md.materia_id
             LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = ad.alumno_id AND ame.materia_id = m.id
             WHERE ad.alumno_id = ? AND ame.alumno_id IS NULL ORDER BY m.nombre
         ");
@@ -133,16 +154,25 @@ class AcademicModel {
     }
 
     public static function materiasAlumnoEnAño(PDO $pdo, int $alumnoId, int $año): array {
+        // Divisiones del alumno en ese año (historial). Si no hay historial para ese año
+        // pero cursa hoy en una división y el año pedido es el activo/actual, se usa la actual.
         $stmt = $pdo->prepare("
             SELECT DISTINCT m.id, m.nombre
-            FROM alumnos_division_historial h
-            JOIN asignaciones_docente adoc ON adoc.division_id = h.division_id
-            JOIN materias m ON m.id = adoc.materia_id
-            LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = h.alumno_id AND ame.materia_id = m.id
-            WHERE h.alumno_id = ? AND h.año_lectivo = ? AND ame.alumno_id IS NULL
+            FROM (
+                SELECT h.alumno_id, h.division_id FROM alumnos_division_historial h
+                WHERE h.alumno_id = ? AND h.año_lectivo = ?
+                UNION
+                SELECT ad.alumno_id, ad.division_id FROM alumnos_division ad
+                WHERE ad.alumno_id = ?
+                  AND NOT EXISTS (SELECT 1 FROM alumnos_division_historial hx WHERE hx.alumno_id = ad.alumno_id)
+            ) x
+            JOIN (" . self::sqlMateriasDeDivision() . ") md ON md.division_id = x.division_id
+            JOIN materias m ON m.id = md.materia_id
+            LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = x.alumno_id AND ame.materia_id = m.id
+            WHERE ame.alumno_id IS NULL
             ORDER BY m.nombre
         ");
-        $stmt->execute([$alumnoId, $año]);
+        $stmt->execute([$alumnoId, $año, $alumnoId]);
         return $stmt->fetchAll();
     }
 
@@ -158,8 +188,8 @@ class AcademicModel {
         $placeholders = implode(',', array_fill(0, count($alumnos), '?'));
         $stmt = $pdo->prepare("
             SELECT DISTINCT m.id, m.nombre FROM alumnos_division ad
-            JOIN asignaciones_docente adoc ON adoc.division_id = ad.division_id
-            JOIN materias m ON m.id = adoc.materia_id
+            JOIN (" . self::sqlMateriasDeDivision() . ") md ON md.division_id = ad.division_id
+            JOIN materias m ON m.id = md.materia_id
             LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = ad.alumno_id AND ame.materia_id = m.id
             WHERE ad.alumno_id IN ($placeholders) AND ame.alumno_id IS NULL ORDER BY m.nombre
         ");
@@ -174,6 +204,47 @@ class AcademicModel {
         $stmt = $pdo->prepare("SELECT DISTINCT division_id FROM alumnos_division WHERE alumno_id IN ($placeholders)");
         $stmt->execute($alumnos);
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * Asigna (o corrige) la división actual de un alumno, manteniendo sincronizados
+     * alumnos_division y alumnos_division_historial (ciclo lectivo activo de su institución).
+     * Es una corrección de carga, no un pase de año: si ya hay una fila activa en el ciclo
+     * actual se actualiza su división en lugar de crear historia nueva.
+     */
+    public static function asignarDivisionAlumno(PDO $pdo, int $alumnoId, int $divisionId): void {
+        $pdo->prepare("DELETE FROM alumnos_division WHERE alumno_id = ?")->execute([$alumnoId]);
+        if ($divisionId <= 0) {
+            $pdo->prepare("UPDATE alumnos_division_historial SET activo = 0, fecha_hasta = COALESCE(fecha_hasta, CURDATE()) WHERE alumno_id = ? AND activo = 1")
+                ->execute([$alumnoId]);
+            return;
+        }
+        $pdo->prepare("INSERT INTO alumnos_division (alumno_id, division_id) VALUES (?, ?)")->execute([$alumnoId, $divisionId]);
+
+        $st = $pdo->prepare("SELECT a.institucion_id FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id WHERE d.id = ?");
+        $st->execute([$divisionId]);
+        $instId = (int)$st->fetchColumn();
+        if (!$instId) return;
+        $ciclo = self::cicloActivo($pdo, $instId);
+        if (!$ciclo) return; // sin ciclo activo: se usa alumnos_division como respaldo
+
+        $st = $pdo->prepare("SELECT id, ciclo_lectivo_id FROM alumnos_division_historial WHERE alumno_id = ? AND activo = 1 LIMIT 1");
+        $st->execute([$alumnoId]);
+        $activa = $st->fetch();
+        if ($activa && (int)$activa['ciclo_lectivo_id'] === (int)$ciclo['id']) {
+            $pdo->prepare("UPDATE alumnos_division_historial SET division_id = ? WHERE id = ?")
+                ->execute([$divisionId, (int)$activa['id']]);
+            return;
+        }
+        if ($activa) {
+            $pdo->prepare("UPDATE alumnos_division_historial SET activo = 0, fecha_hasta = CURDATE() WHERE id = ?")
+                ->execute([(int)$activa['id']]);
+        }
+        $pdo->prepare("
+            INSERT INTO alumnos_division_historial
+            (alumno_id, division_id, ciclo_lectivo_id, año_lectivo, fecha_desde, fecha_hasta, estado, activo)
+            VALUES (?, ?, ?, ?, CURDATE(), NULL, 'cursando', 1)
+        ")->execute([$alumnoId, $divisionId, (int)$ciclo['id'], (int)$ciclo['año']]);
     }
 
     public static function transferirAlumnos(

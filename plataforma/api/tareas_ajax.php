@@ -2,12 +2,14 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
+require_once __DIR__ . '/../core/Acceso.php';
 require_once __DIR__ . '/../core/FileHandler.php';
 
 use MongoDB\BSON\ObjectId;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(ROLES_DOCENTES);
+$yo = Acceso::yo();
 
 $action = $_GET['action'] ?? '';
 
@@ -84,6 +86,11 @@ try {
                 if (!$stmt->fetchColumn()) {
                     jsonResponse(['ok' => false, 'mensaje' => 'La división seleccionada no corresponde a los cursos de esta materia'], 400);
                 }
+            }
+
+            // Autorización: docentes solo sus materias/divisiones; directivos solo su institución
+            if (!Acceso::puedeCrearEn($pdo, $yo, $materiaId, $divisionesIds)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso para crear tareas en esa materia o división'], 403);
             }
 
             // Título duplicado
@@ -163,14 +170,12 @@ try {
             $tarea = $mongoDB->selectCollection('tareas')->findOne(['_id' => $entrega['tarea_id']]);
             if (!$tarea) jsonResponse(['ok' => false, 'mensaje' => 'Tarea no encontrada'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario']);
-            $esDueno = (int)$tarea['docente_id'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) {
+            if (!Acceso::puedeAdministrarTarea($pdo, $yo, $tarea)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso para calificar esta entrega'], 403);
             }
 
             $estado = $_POST['estado'] ?? 'entregada';
-            if (!in_array($estado, ['aprobada', 'rechazada', 'entregada'])) {
+            if (!in_array($estado, ['aprobada', 'rechazada'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Estado inválido'], 400);
             }
 
@@ -184,7 +189,21 @@ try {
                 jsonResponse(['ok' => false, 'mensaje' => 'Nota debe ser entre 0 y 10'], 400);
             }
 
+            $vista = $_POST['vista_calificacion'] ?? 'letras';
+            if (!in_array($vista, ['letras', 'numerica'], true)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Tipo de calificación a mostrar inválido'], 400);
+            }
+            if ($estado === 'aprobada') {
+                if ($vista === 'letras' && $calificacion === '') {
+                    jsonResponse(['ok' => false, 'mensaje' => 'Elegiste mostrar la calificación en letras pero no cargaste ninguna'], 400);
+                }
+                if ($vista === 'numerica' && $nota === '') {
+                    jsonResponse(['ok' => false, 'mensaje' => 'Elegiste mostrar la nota numérica pero no cargaste ninguna'], 400);
+                }
+            }
+
             $update = [
+                'vista_calificacion' => $vista,
                 'estado'           => $estado,
                 'calificacion'     => $calificacion ?: null,
                 'nota_numerica'    => $nota !== '' ? (float)$nota : null,
@@ -222,9 +241,7 @@ try {
             }
             if (!$tarea) jsonResponse(['ok' => false, 'mensaje' => 'Tarea no encontrada'], 404);
 
-            $esAdmin = in_array($_SESSION['rol'], ['directivo', 'secretario']);
-            $esDueno = (int)$tarea['docente_id'] === (int)$_SESSION['user_id'];
-            if (!$esAdmin && !$esDueno) {
+            if (!Acceso::puedeAdministrarTarea($pdo, $yo, $tarea)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso'], 403);
             }
 

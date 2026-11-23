@@ -35,7 +35,7 @@ $instituciones = $pdo->query("
 
             <fieldset style="border:0.0625rem solid var(--borde-vidrio); border-radius:0.5rem; padding:0.75rem 1rem;">
                 <legend style="padding:0 0.5rem; color:#7dd3fc; font-weight:600;">Dueño de la institución</legend>
-                <label>DNI del dueño <input type="text" name="duenio_dni" required pattern="[0-9A-Za-z]{6,20}" maxlength="20"></label>
+                <label>DNI del dueño <input type="text" name="duenio_dni" required inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12"></label>
             </fieldset>
 
             <div id="instError" class="alerta danger" style="display:none; margin-top:1rem;"></div>

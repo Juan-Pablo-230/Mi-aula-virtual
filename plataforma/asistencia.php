@@ -153,6 +153,12 @@ if ($rol === 'docente') {
 }
 $materias = $stmt->fetchAll();
 
+// El materia_id de la URL debe estar entre las materias permitidas (la madre puede ver todas)
+$materiasPermitidas = array_map('intval', array_column($materias, 'id'));
+if ($materiaId && $rol !== 'madre' && !in_array($materiaId, $materiasPermitidas, true)) {
+    redirect('/plataforma/asistencia.php');
+}
+
 if (!$materiaId && !empty($materias)) $materiaId = (int)$materias[0]['id'];
 
 $alumnos = [];
