@@ -68,6 +68,7 @@ CREATE TABLE asignaciones (
     nombre VARCHAR(100) NOT NULL,
     nivel_id INT NOT NULL,
     institucion_id INT NULL,
+    asistencia_por_dia TINYINT(1) NOT NULL DEFAULT 0,
     FOREIGN KEY (nivel_id) REFERENCES niveles(id),
     CONSTRAINT fk_asignaciones_inst FOREIGN KEY (institucion_id)
         REFERENCES instituciones(id) ON DELETE CASCADE,

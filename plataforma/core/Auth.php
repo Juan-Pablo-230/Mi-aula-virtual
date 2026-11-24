@@ -6,7 +6,9 @@ class Auth {
     const LOGIN_VENTANA_SEG   = 900;  // 15 minutos
     const LOGIN_MAX_DNI_IP    = 5;    // mismo DNI desde la misma IP
     const LOGIN_MAX_IP        = 30;   // cualquier DNI desde la misma IP
-    const LOGIN_MAX_DNI_TOTAL = 20;   // mismo DNI desde cualquier IP (ataque distribuido)
+    // Mismo DNI desde cualquier IP: NO bloquea (si bloqueara, cualquiera podría dejar sin acceso a un
+    // usuario ajeno enviando intentos fallidos a propósito); solo deja una alerta en el log.
+    const LOGIN_ALERTA_DNI_TOTAL = 20;
 
     // Páginas/endpoints permitidos mientras el usuario no completó el primer ingreso
     const PRIMER_INGRESO_PERMITIDOS = ['primer_ingreso.php', 'primer_ingreso_ajax.php', 'logout.php', 'session_check.php'];
@@ -39,8 +41,7 @@ class Auth {
 
     private static function loginBloqueado($col, string $dni, string $ip): bool {
         return self::intentos($col, ['dni' => $dni, 'ip' => $ip]) >= self::LOGIN_MAX_DNI_IP
-            || self::intentos($col, ['ip' => $ip])               >= self::LOGIN_MAX_IP
-            || self::intentos($col, ['dni' => $dni])             >= self::LOGIN_MAX_DNI_TOTAL;
+            || self::intentos($col, ['ip' => $ip])               >= self::LOGIN_MAX_IP;
     }
 
     public static function login(PDO $pdo, string $dni, string $password, $mongoDB = null): array {
@@ -71,7 +72,12 @@ class Auth {
         $passOk   = self::verifyPassword($password, $hashReal);
 
         if (!$user || !$passOk) {
-            if ($col) $col->insertOne(['dni' => $dni, 'ip' => $ip, 'fecha' => new MongoDB\BSON\UTCDateTime()]);
+            if ($col) {
+                $col->insertOne(['dni' => $dni, 'ip' => $ip, 'fecha' => new MongoDB\BSON\UTCDateTime()]);
+                if (self::intentos($col, ['dni' => $dni]) === self::LOGIN_ALERTA_DNI_TOTAL) {
+                    error_log('Alerta de seguridad: ' . self::LOGIN_ALERTA_DNI_TOTAL . ' intentos fallidos al mismo DNI desde distintas IP en 15 min (posible ataque distribuido)');
+                }
+            }
             return ['ok' => false, 'mensaje' => 'DNI o contraseña incorrectos'];
         }
 
@@ -86,11 +92,30 @@ class Auth {
         $_SESSION['institucion_id'] = $user['institucion_id'] ?? null;
         $_SESSION['foto_perfil']    = $user['foto_perfil'];
         csrfToken(); // genera el token CSRF de la nueva sesión
+        $_SESSION['pw_firma']         = self::firmaPassword((string)$user['password_hash']);
+        $_SESSION['ultima_actividad'] = time();
 
         if ($user['primer_ingreso']) {
             return ['ok' => true, 'redirect' => '/plataforma/primer_ingreso.php'];
         }
         return ['ok' => true, 'redirect' => '/plataforma/publicaciones.php'];
+    }
+
+    /** Huella corta del hash de contraseña: si la contraseña cambia, las sesiones viejas dejan de valer. */
+    public static function firmaPassword(string $hash): string {
+        return substr(hash('sha256', $hash), 0, 24);
+    }
+
+    /**
+     * Tras cambiar la contraseña propia: la sesión actual sigue valiendo (con ID nueva) y
+     * todas las demás sesiones de esa cuenta quedan invalidadas.
+     */
+    public static function refrescarSesionTrasCambioPassword(PDO $pdo, int $userId): void {
+        $stmt = $pdo->prepare("SELECT password_hash FROM usuarios WHERE id = ?");
+        $stmt->execute([$userId]);
+        $hash = (string)$stmt->fetchColumn();
+        session_regenerate_id(true);
+        $_SESSION['pw_firma'] = self::firmaPassword($hash);
     }
 
     public static function logout(): void {
@@ -122,13 +147,29 @@ class Auth {
 
         // Revalidar contra la base en cada petición: si desactivaron o cambiaron de rol
         // al usuario, el cambio rige de inmediato y no recién cuando vence la sesión.
-        $stmt = $pdo->prepare("SELECT rol, activo, primer_ingreso, institucion_id FROM usuarios WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT rol, activo, primer_ingreso, institucion_id, password_hash FROM usuarios WHERE id = ?");
         $stmt->execute([(int)$_SESSION['user_id']]);
         $u = $stmt->fetch();
         if (!$u || !(int)$u['activo']) {
             self::logout();
             self::sesionInvalida('Tu sesión expiró. Iniciá sesión de nuevo.', 401);
         }
+
+        // Vencimiento por inactividad
+        $ahora = time();
+        if (isset($_SESSION['ultima_actividad']) && ($ahora - (int)$_SESSION['ultima_actividad']) > SESION_INACTIVIDAD_SEG) {
+            self::logout();
+            self::sesionInvalida('Tu sesión expiró por inactividad. Iniciá sesión de nuevo.', 401);
+        }
+        $_SESSION['ultima_actividad'] = $ahora;
+
+        // Si la contraseña cambió desde otra sesión, esta ya no vale
+        $firma = self::firmaPassword((string)$u['password_hash']);
+        if (isset($_SESSION['pw_firma']) && !hash_equals($_SESSION['pw_firma'], $firma)) {
+            self::logout();
+            self::sesionInvalida('Tu contraseña cambió. Iniciá sesión de nuevo.', 401);
+        }
+        $_SESSION['pw_firma'] = $firma;
         $_SESSION['rol']            = $u['rol'];
         $_SESSION['institucion_id'] = $u['institucion_id'];
 

@@ -21,10 +21,9 @@ if (!$user['primer_ingreso']) {
 // ============================================================
 // Detectar si es dueño nuevo (puede editar nombre/apellido)
 // ============================================================
-$esDuenioNuevo = (
-    ($user['nombre'] === 'Dueño' && strpos((string)$user['apellido'], 'Institución ') === 0)
-    || $user['email'] === null
-);
+// Solo el dueño recién creado por la plataforma (nombre provisorio) puede completar su nombre.
+// (Antes también bastaba con no tener email, lo que permitía a cualquier alumno cambiarse el nombre.)
+$esDuenioNuevo = ($user['nombre'] === 'Dueño' && strpos((string)$user['apellido'], 'Institución ') === 0);
 
 $nombre    = trim($_POST['nombre'] ?? '');
 $apellido  = trim($_POST['apellido'] ?? '');
@@ -72,6 +71,7 @@ try {
     ]);
 
     $_SESSION['nombre'] = $nombre . ' ' . $apellido;
+    Auth::refrescarSesionTrasCambioPassword($pdo, $userId);
 
     jsonResponse(['ok' => true]);
 } catch (Exception $e) {

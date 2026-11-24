@@ -41,6 +41,7 @@ $hintNombre = $esDuenioNuevo
     <meta name="csrf-token" content="<?= h(csrfToken()) ?>">
     <link rel="stylesheet" href="/assets/css/aulaviva.css">
     <script src="/assets/js/aulaviva.js"></script>
+    <script src="/assets/js/password-ojo.js"></script>
 </head>
 <body>
 <div class="login-wrapper">

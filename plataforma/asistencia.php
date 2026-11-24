@@ -4,7 +4,9 @@ require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/core/GradeHelpers.php';
 require_once __DIR__ . '/core/Feriados.php';
+require_once __DIR__ . '/core/AsistenciaReglas.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -17,7 +19,8 @@ $esFamiliar = ($rol === 'familiar');
 $cicloActivo = $miInst ? AcademicModel::cicloActivo($pdo, $miInst) : null;
 $añoActual = $cicloActivo ? (int)$cicloActivo['año'] : (int)date('Y');
 
-$fecha = $_GET['fecha'] ?? date('Y-m-d');
+$fecha = (string)($_GET['fecha'] ?? '');
+if (!AsistenciaReglas::formatoValido($fecha)) $fecha = date('Y-m-d');
 $añoFecha = (int)date('Y', strtotime($fecha));
 $feriados = obtenerFeriados($añoFecha);
 
@@ -61,6 +64,7 @@ if ($esAlumno || $esFamiliar) {
 
     $materias = AcademicModel::materiasAlumnoEnAño($pdo, $alumnoSel, $añoSel);
     $materiaIds = array_map('intval', array_column($materias, 'id'));
+    $materiaIds[] = AsistenciaReglas::MATERIA_DIA; // asistencias por día completo (cursos configurados así)
     $divisionesEnAño = AcademicModel::divisionesDelAlumnoEnAño($pdo, $alumnoSel, $añoSel);
 
     $filtro = [
@@ -75,7 +79,8 @@ if ($esAlumno || $esFamiliar) {
         return (int)$a['fecha']->toDateTime()->format('Y') === $añoSel;
     }));
 
-    $matMap = []; foreach ($materias as $m) $matMap[(int)$m['id']] = $m['nombre'];
+    $matMap = [AsistenciaReglas::MATERIA_DIA => '🗓️ Día completo (todas las materias)'];
+    foreach ($materias as $m) $matMap[(int)$m['id']] = $m['nombre'];
 
     include __DIR__ . '/views/header.php';
     include __DIR__ . '/views/menu.php';
@@ -119,7 +124,7 @@ if ($esAlumno || $esFamiliar) {
                 <p class="alerta info">Sin registros para el año <?= $añoSel ?>.</p>
             <?php else: ?>
                 <table class="tabla-alumnos">
-                    <thead><tr><th>Fecha</th><th>Materia</th><th>Estado</th></tr></thead>
+                    <thead><tr><th>Fecha</th><th>Materia / Día</th><th>Estado</th></tr></thead>
                     <tbody>
                         <?php foreach ($asistencias as $a):
                             $f = $a['fecha']->toDateTime();
@@ -159,7 +164,22 @@ if ($materiaId && $rol !== 'madre' && !in_array($materiaId, $materiasPermitidas,
     redirect('/plataforma/asistencia.php');
 }
 
-if (!$materiaId && !empty($materias)) $materiaId = (int)$materias[0]['id'];
+// Cursos que toman asistencia por día completo (en lugar de por materia)
+$yoAsist = Acceso::yo();
+$divisionesDia = AsistenciaReglas::divisionesPorDia($pdo, $yoAsist);
+$divisionesDiaIds = array_map('intval', array_column($divisionesDia, 'id'));
+$divisionDia = (int)($_GET['division_dia'] ?? 0);
+if ($divisionDia && !in_array($divisionDia, $divisionesDiaIds, true)) $divisionDia = 0;
+if ($divisionDia) $materiaId = 0;   // se elige una cosa o la otra
+$modoDia = $divisionDia > 0;
+
+if (!$materiaId && !$modoDia) {
+    if (!empty($materias)) $materiaId = (int)$materias[0]['id'];
+    elseif (!empty($divisionesDia)) { $divisionDia = (int)$divisionesDia[0]['id']; $modoDia = true; }
+}
+// Clave con la que se guardan las asistencias: la materia, o 0 si es por día completo
+$claveMateria = $modoDia ? AsistenciaReglas::MATERIA_DIA : $materiaId;
+$asigDia = $modoDia ? AsistenciaReglas::asignacionDeDivision($pdo, $divisionDia) : 0;
 
 $alumnos = [];
 $asistenciaHoy = [];
@@ -169,41 +189,58 @@ $topesPorAlumno = [];
 $diasConAsistencia = [];
 $topeMateria = 10;
 
-if ($materiaId) {
+if ($materiaId || $modoDia) {
+  if ($modoDia) {
+    // Por día: todos los alumnos activos de la división
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT u.id, u.nombre, u.apellido, h.division_id
+        FROM usuarios u
+        JOIN alumnos_division_historial h ON h.alumno_id = u.id AND h.activo = 1 AND h.año_lectivo = ?
+        WHERE h.division_id = ? AND u.rol = 'alumno' AND u.activo = 1
+        ORDER BY u.apellido, u.nombre
+    ");
+    $stmt->execute([$añoSel, $divisionDia]);
+  } else {
     $stmt = $pdo->prepare("
         SELECT DISTINCT u.id, u.nombre, u.apellido, h.division_id
         FROM usuarios u
         JOIN alumnos_division_historial h ON h.alumno_id = u.id AND h.activo = 1 AND h.año_lectivo = ?
         JOIN asignaciones_docente adoc ON adoc.division_id = h.division_id
+        JOIN divisiones dv ON dv.id = h.division_id
+        JOIN asignaciones asg ON asg.id = dv.asignacion_id
         LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = u.id AND ame.materia_id = adoc.materia_id
         WHERE adoc.materia_id = ? AND u.rol = 'alumno' AND u.activo = 1 AND ame.alumno_id IS NULL
+        " . AsistenciaReglas::sqlSoloPorMateria($pdo, 'asg') . "
         ORDER BY u.apellido, u.nombre
     ");
     $stmt->execute([$añoSel, $materiaId]);
+  }
     $alumnos = $stmt->fetchAll();
 
     if (!empty($alumnos)) {
         $aIds = array_map(fn($a) => (int)$a['id'], $alumnos);
-        $regla = $mongoDB->selectCollection('reglas_asistencia')->findOne(['materia_id' => $materiaId]);
+        $regla = $mongoDB->selectCollection('reglas_asistencia')->findOne($modoDia ? ['materia_id' => 0, 'asignacion_id' => $asigDia] : ['materia_id' => $materiaId]);
         $topeMateria = (int)($regla['faltas_maximas'] ?? 10);
-        $topesP = $mongoDB->selectCollection('topes_alumno')->find(['materia_id' => $materiaId, 'alumno_id' => ['$in' => $aIds]])->toArray();
+        $topesP = $mongoDB->selectCollection('topes_alumno')->find(['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $aIds]])->toArray();
         foreach ($topesP as $t) $topesPorAlumno[(int)$t['alumno_id']] = (int)$t['tope'];
 
         $fIni = new MongoDB\BSON\UTCDateTime(strtotime($fecha . ' 00:00:00') * 1000);
         $fFin = new MongoDB\BSON\UTCDateTime(strtotime($fecha . ' 23:59:59') * 1000);
-        $regs = $mongoDB->selectCollection('asistencia')->find(['materia_id' => $materiaId, 'alumno_id' => ['$in' => $aIds], 'fecha' => ['$gte' => $fIni, '$lte' => $fFin]])->toArray();
+        $regs = $mongoDB->selectCollection('asistencia')->find(['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $aIds], 'fecha' => ['$gte' => $fIni, '$lte' => $fFin]])->toArray();
         foreach ($regs as $r) $asistenciaHoy[(int)$r['alumno_id']] = $r['estado'];
 
         $faltas = $mongoDB->selectCollection('asistencia')->aggregate([
-            ['$match' => ['materia_id' => $materiaId, 'alumno_id' => ['$in' => $aIds], 'estado' => 'ausente']],
+            ['$match' => ['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $aIds], 'estado' => 'ausente']],
             ['$group' => ['_id' => '$alumno_id', 'total' => ['$sum' => 1]]]
         ])->toArray();
         foreach ($faltas as $f) $faltasPorAlumno[(int)$f['_id']] = (int)$f['total'];
 
-        $libres = $mongoDB->selectCollection('alumno_libre')->find(['materia_id' => $materiaId, 'alumno_id' => ['$in' => $aIds]])->toArray();
+        $libres = $mongoDB->selectCollection('alumno_libre')->find(['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $aIds]])->toArray();
         foreach ($libres as $l) $libresPorAlumno[(int)$l['alumno_id']] = true;
 
-        $existentes = $mongoDB->selectCollection('asistencia')->find(['materia_id' => $materiaId], ['projection' => ['fecha' => 1]])->toArray();
+        $filtroExistentes = ['materia_id' => $claveMateria];
+        if ($modoDia) $filtroExistentes['division_id'] = $divisionDia;   // por día: solo los días de ESTA división
+        $existentes = $mongoDB->selectCollection('asistencia')->find($filtroExistentes, ['projection' => ['fecha' => 1]])->toArray();
         foreach ($existentes as $e) {
             $f = $e['fecha']->toDateTime();
             $f->setTimezone(new DateTimeZone('America/Argentina/Buenos_Aires'));
@@ -214,6 +251,11 @@ if ($materiaId) {
 }
 
 $esDirectivoVista = in_array($rol, ['directivo', 'secretario', 'madre'], true);
+// Solo directivo y secretario definen los períodos en los que no se puede pasar asistencia
+$puedeBloquear = in_array($rol, ['directivo', 'secretario'], true) && $miInst > 0;
+$instMateria = $modoDia ? (int)Acceso::instDeDivision($pdo, $divisionDia) : ($materiaId ? (int)Acceso::instDeMateria($pdo, $materiaId) : $miInst);
+$periodosBloqueados = AsistenciaReglas::periodos($mongoDB, $instMateria);
+$errorFecha = ($materiaId || $modoDia) ? AsistenciaReglas::validarFecha($pdo, $mongoDB, $claveMateria, $fecha, $divisionDia) : null;
 $mostrarLibres = !empty($_GET['mostrar_libres']);
 $alumnosVisibles = [];
 foreach ($alumnos as $a) {
@@ -238,7 +280,7 @@ include __DIR__ . '/views/menu.php';
             <strong style="color:#7dd3fc;">Ver año:</strong>
             <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
                 <?php foreach ($añosDisponibles as $a): ?>
-                    <a href="?año=<?= $a ?>&materia_id=<?= $materiaId ?>" class="btn-mini" style="<?= $a === $añoSel ? 'background:var(--celeste);color:#fff;' : 'background:rgba(255,255,255,0.08);color:#cfe2ff;' ?>">
+                    <a href="?año=<?= $a ?>&materia_id=<?= $materiaId ?>&division_dia=<?= $divisionDia ?>" class="btn-mini" style="<?= $a === $añoSel ? 'background:var(--celeste);color:#fff;' : 'background:rgba(255,255,255,0.08);color:#cfe2ff;' ?>">
                         <?= $a ?>
                     </a>
                 <?php endforeach; ?>
@@ -249,36 +291,60 @@ include __DIR__ . '/views/menu.php';
     <div class="panel-vidrio" style="padding:1rem; margin-bottom:1rem;">
         <form method="get" style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
             <input type="hidden" name="año" value="<?= $añoSel ?>">
-            <label style="margin:0;">Materia:
-                <select name="materia_id" onchange="this.form.submit()">
+            <input type="hidden" name="materia_id" id="hiddenMateria" value="<?= (int)$materiaId ?>">
+            <input type="hidden" name="division_dia" id="hiddenDivisionDia" value="<?= (int)$divisionDia ?>">
+            <label style="margin:0;"><?= empty($divisionesDia) ? 'Materia:' : 'Materia / curso:' ?>
+                <select onchange="cambiarClase(this)">
+                    <?php if (!empty($divisionesDia)): ?><optgroup label="Por materia"><?php endif; ?>
                     <?php foreach ($materias as $m): ?>
-                        <option value="<?= (int)$m['id'] ?>" <?= $m['id'] == $materiaId ? 'selected' : '' ?>><?= h($m['nombre']) ?></option>
+                        <option value="m:<?= (int)$m['id'] ?>" <?= (!$modoDia && $m['id'] == $materiaId) ? 'selected' : '' ?>><?= h($m['nombre']) ?></option>
                     <?php endforeach; ?>
+                    <?php if (!empty($divisionesDia)): ?></optgroup>
+                    <optgroup label="Asistencia por día completo">
+                        <?php foreach ($divisionesDia as $dd): ?>
+                            <option value="d:<?= (int)$dd['id'] ?>" <?= ($modoDia && (int)$dd['id'] === $divisionDia) ? 'selected' : '' ?>>🗓️ <?= h($dd['curso'] . ' ' . $dd['division']) ?></option>
+                        <?php endforeach; ?>
+                    </optgroup><?php endif; ?>
                 </select>
             </label>
             <label style="margin:0;">Fecha:
-                <input type="date" name="fecha" id="fechaAsistencia" value="<?= h($fecha) ?>" style="width:11rem; margin:0;">
+                <input type="date" name="fecha" id="fechaAsistencia" value="<?= h($fecha) ?>" max="<?= h(date('Y-m-d')) ?>" style="width:11rem; margin:0;">
             </label>
             <label style="margin:0;"><input type="checkbox" name="mostrar_libres" value="1" <?= $mostrarLibres ? 'checked' : '' ?> onchange="this.form.submit()"> Mostrar libres</label>
-            <?php if ($esDirectivoVista && $materiaId): ?>
-            <label style="margin:0; flex-basis:100%;">⚙️ Tope general de faltas (queda LIBRE al llegar a este número):
+            <?php if ($puedeBloquear): ?>
+                <button type="button" class="btn-secundario" onclick="abrirModalPeriodos()">🚫 Períodos sin asistencia</button>
+            <?php endif; ?>
+            <?php if ($esDirectivoVista && ($materiaId || $modoDia)): ?>
+            <label style="margin:0; flex-basis:100%;">⚙️ Tope general de faltas<?= $modoDia ? ' del curso' : '' ?> (queda LIBRE al llegar a este número):
                 <span style="display:inline-flex; gap:0.5rem; align-items:center;">
                     <input type="number" id="topeMateria" class="input-tope" value="<?= (int)$topeMateria ?>" min="1" max="999" onkeydown="if(event.key==='Enter'){event.preventDefault();guardarTopeMateria();}">
                     <button type="button" class="btn-primario" onclick="guardarTopeMateria()">Guardar tope</button>
                 </span>
             </label>
             <?php endif; ?>
-            <?php if ($esDirectivoVista && $materiaId): ?>
-            <small style="color:#a5c3e8; flex-basis:100%;">Aplica a todos los alumnos de la materia, salvo los que tengan un tope personal (botón ✏️ en cada tarjeta).</small>
+            <?php if (!empty($periodosBloqueados)): ?>
+            <small style="color:#fbbf24; flex-basis:100%;">🚫 Sin asistencia:
+                <?php foreach ($periodosBloqueados as $i => $pb): ?><?= $i ? ' · ' : '' ?><?= h(AsistenciaReglas::fmt($pb['desde'])) ?> al <?= h(AsistenciaReglas::fmt($pb['hasta'])) ?><?= $pb['motivo'] !== '' ? ' (' . h($pb['motivo']) . ')' : '' ?><?php endforeach; ?>
+            </small>
+            <?php endif; ?>
+            <?php if ($esDirectivoVista && ($materiaId || $modoDia)): ?>
+            <small style="color:#a5c3e8; flex-basis:100%;">Aplica a todos los alumnos <?= $modoDia ? 'del curso' : 'de la materia' ?>, salvo los que tengan un tope personal (botón ✏️ en cada tarjeta).</small>
             <?php endif; ?>
         </form>
     </div>
 
     <div id="fechaError" class="alerta danger" style="display:none; margin-bottom:1rem;"></div>
+    <?php if ($errorFecha): ?>
+        <div class="alerta danger" style="margin-bottom:1rem;">⚠️ <?= h($errorFecha) ?> Elegí otra fecha para pasar lista.</div>
+    <?php endif; ?>
 
-    <?php if ($materiaId): ?>
+    <?php if ($modoDia): ?>
+        <div class="alerta info" style="margin-bottom:1rem;">🗓️ <strong>Asistencia por día completo.</strong> Este curso no pasa lista por materia: la asistencia que cargues acá vale para todas las materias del día. El tope de faltas para quedar libre funciona igual.</div>
+    <?php endif; ?>
+
+    <?php if ($materiaId || $modoDia): ?>
         <?php if (empty($alumnosVisibles)): ?>
-            <div class="panel-vidrio"><p class="alerta info">Sin alumnos para el año <?= $añoSel ?>.</p></div>
+            <div class="panel-vidrio"><p class="alerta info">Sin alumnos para el año <?= $añoSel ?>.<?= (!$modoDia && !empty($divisionesDia)) ? ' Si esta materia se dicta en cursos que toman asistencia por día completo, elegí el curso en el grupo "Asistencia por día completo".' : '' ?></p></div>
         <?php else: ?>
             <div class="asistencia-grid">
                 <?php foreach ($alumnosVisibles as $a):
@@ -303,12 +369,42 @@ include __DIR__ . '/views/menu.php';
                 <?php endforeach; ?>
             </div>
             <div class="asistencia-guardar" style="margin-top:1rem; text-align:center;">
-                <button class="btn-primario" id="btnGuardarAsistencia" onclick="guardarAsistencia()">💾 Guardar asistencia</button>
+                <button class="btn-primario" id="btnGuardarAsistencia" onclick="guardarAsistencia()" <?= $errorFecha ? 'disabled title="' . h($errorFecha) . '"' : '' ?>>💾 Guardar asistencia</button>
                 <span id="avisoCambios" style="display:none; color:#fbbf24; margin-left:1rem;">Cambios sin guardar</span>
             </div>
         <?php endif; ?>
     <?php endif; ?>
 </main>
+<?php if ($puedeBloquear): ?>
+<div class="modal-fondo oculto" id="modalPeriodos">
+    <div class="modal-caja" style="min-width: 30rem;">
+        <h3>🚫 Períodos sin asistencia</h3>
+        <p style="color:#cfe2ff; font-size:0.85rem; margin-bottom:0.75rem;">En estos rangos de fechas no se puede pasar lista en ninguna materia de la institución (receso, paro, acto, etc.).</p>
+        <div id="listaPeriodos" style="max-height:14rem; overflow-y:auto; margin-bottom:0.5rem;">
+            <?php if (empty($periodosBloqueados)): ?>
+                <p class="alerta info" style="margin:0;">No hay períodos cargados.</p>
+            <?php else: foreach ($periodosBloqueados as $pb): ?>
+                <div class="panel-vidrio" style="padding:0.5rem 0.75rem; margin-bottom:0.4rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                    <span><strong><?= h(AsistenciaReglas::fmt($pb['desde'])) ?> → <?= h(AsistenciaReglas::fmt($pb['hasta'])) ?></strong><?= $pb['motivo'] !== '' ? '<br><small style="color:#a5c3e8;">' . h($pb['motivo']) . '</small>' : '' ?></span>
+                    <button type="button" class="btn-peligro-sm" title="Quitar período" onclick="eliminarPeriodo('<?= h($pb['id']) ?>')">🗑️</button>
+                </div>
+            <?php endforeach; endif; ?>
+        </div>
+        <form id="formPeriodo">
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                <label style="flex:1; min-width:9rem;">Desde <input type="date" name="desde" id="periodoDesde" required></label>
+                <label style="flex:1; min-width:9rem;">Hasta <input type="date" name="hasta" id="periodoHasta" required></label>
+            </div>
+            <label>Motivo (opcional) <input type="text" name="motivo" id="periodoMotivo" maxlength="150" placeholder="Ej: Receso invernal" autocomplete="off"></label>
+            <div id="periodoError" class="alerta danger" style="display:none;"></div>
+            <div class="modal-acciones">
+                <button type="button" class="btn-secundario" onclick="cerrarModalPeriodos()">Cerrar</button>
+                <button type="submit" class="btn-primario">Agregar período</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 <?php if ($esDirectivoVista): ?>
 <div class="modal-fondo oculto" id="modalTope">
     <div class="modal-caja" style="min-width: 22rem;">
@@ -328,10 +424,13 @@ include __DIR__ . '/views/menu.php';
 </div>
 <?php endif; ?>
 <script>
-window.MATERIA_ID = <?= (int)$materiaId ?>;
+window.MATERIA_ID = <?= (int)$claveMateria ?>;
+window.DIVISION_DIA = <?= (int)$divisionDia ?>;
 window.FECHA = <?= jsonJs($fecha) ?>;
 window.ES_DIRECTIVO = <?= in_array($rol, ['directivo','secretario','madre']) ? 'true' : 'false' ?>;
 window.FERIADOS = <?= $feriadosJson ?>;
+window.PERIODOS_BLOQUEADOS = <?= jsonJs($periodosBloqueados) ?>;
+window.HOY = <?= jsonJs(date('Y-m-d')) ?>;
 window.DIAS_CON_ASISTENCIA = <?= $diasJson ?>;
 </script>
 <script src="/assets/js/asistencia.js?v=<?= time() ?>"></script>

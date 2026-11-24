@@ -117,6 +117,23 @@ class Acceso {
         return false;
     }
 
+    /** ¿Puede tomar asistencia por día en esta división? (docente que dicta alguna materia en ella, directivo/secretario de la institución o madre) */
+    public static function puedeGestionarDivisionDia(PDO $pdo, array $u, int $divisionId): bool {
+        if ($divisionId <= 0) return false;
+        if (self::esMadre($u)) return true;
+        if (self::esAdminInst($u)) return self::divisionEnMiInst($pdo, $u, $divisionId);
+        if ($u['rol'] === 'docente') {
+            return (bool)self::valor($pdo, "SELECT 1 FROM asignaciones_docente WHERE docente_id = ? AND division_id = ? LIMIT 1", [$u['id'], $divisionId]);
+        }
+        return false;
+    }
+
+    /** ¿Puede gestionar la asistencia por día de ESTE alumno en ESTA división? (el alumno debe cursar en ella) */
+    public static function puedeGestionarAlumnoDia(PDO $pdo, array $u, int $alumnoId, int $divisionId): bool {
+        if ($alumnoId <= 0 || !self::puedeGestionarDivisionDia($pdo, $u, $divisionId)) return false;
+        return (bool)self::valor($pdo, "SELECT 1 FROM alumnos_division_historial WHERE alumno_id = ? AND division_id = ? AND activo = 1 LIMIT 1", [$alumnoId, $divisionId]);
+    }
+
     /** ¿Puede ver los datos (boletín, etc.) de este alumno? */
     public static function puedeVerAlumno(PDO $pdo, array $u, int $alumnoId): bool {
         if ($alumnoId <= 0) return false;

@@ -33,6 +33,8 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
     <link rel="stylesheet" href="/assets/css/aulaviva.css">
     <script src="/assets/js/aulaviva.js"></script>
     <script src="/assets/js/dni-numerico.js"></script>
+    <script src="/assets/js/password-ojo.js"></script>
+    <script src="/assets/js/modal-scroll.js"></script>
 </head>
 <body>
 
@@ -91,7 +93,10 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
                 <?php elseif (in_array($rolActual, ['directivo', 'secretario'])): ?>
                     <a href="/plataforma/admin/cursos.php">🏫 Administrar institución</a>
                 <?php endif; ?>
-                <a href="/plataforma/logout.php">🚪 Cerrar sesión</a>
+                <form method="post" action="/plataforma/logout.php" class="form-logout">
+                    <input type="hidden" name="csrf_token" value="<?= h(csrfToken()) ?>">
+                    <button type="submit">🚪 Cerrar sesión</button>
+                </form>
             </div>
         </div>
     </div>

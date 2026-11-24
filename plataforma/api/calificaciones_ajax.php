@@ -69,8 +69,9 @@ try {
             }
             if (!$extra) jsonResponse(['ok' => false, 'mensaje' => 'Nota no encontrada'], 404);
 
-            $esDueno = (int)$extra['creada_por'] === (int)$_SESSION['user_id'];
-            if (!$esDueno && !Acceso::puedeGestionarAlumnoMateria($pdo, $yo, (int)$extra['alumno_id'], (int)$extra['materia_id'])) {
+            // Hay que seguir teniendo acceso al alumno y la materia (haber creado la nota no alcanza:
+            // un docente al que ya le quitaron la asignación no puede tocar sus notas)
+            if (!Acceso::puedeGestionarAlumnoMateria($pdo, $yo, (int)$extra['alumno_id'], (int)$extra['materia_id'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403);
             }
 

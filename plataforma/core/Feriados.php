@@ -1,5 +1,19 @@
 <?php
+/** Feriados nacionales fijos: se usan si el año está fuera de rango o la API no responde. */
+function feriadosFijos(int $año): array {
+    return [
+        "{$año}-01-01", "{$año}-03-24", "{$año}-04-02",
+        "{$año}-05-01", "{$año}-05-25", "{$año}-06-20",
+        "{$año}-07-09", "{$año}-12-08", "{$año}-12-25",
+    ];
+}
+
 function obtenerFeriados(int $año): array {
+    // Solo se consulta la API / se escribe caché para años razonables. Sin este límite, pedir
+    // ?fecha=1500-01-01, 2999-01-01, etc. dispararía una consulta externa y un archivo por cada año.
+    $actual = (int)date('Y');
+    if ($año < $actual - 5 || $año > $actual + 2) return feriadosFijos($año);
+
     $archivoCache = __DIR__ . '/../config/feriados_' . $año . '.json';
     if (file_exists($archivoCache)) {
         $datos = json_decode(@file_get_contents($archivoCache), true);
@@ -13,11 +27,7 @@ function obtenerFeriados(int $año): array {
         }
         return $fechas;
     }
-    return [
-        "{$año}-01-01", "{$año}-03-24", "{$año}-04-02",
-        "{$año}-05-01", "{$año}-05-25", "{$año}-06-20",
-        "{$año}-07-09", "{$año}-12-08", "{$año}-12-25",
-    ];
+    return feriadosFijos($año);
 }
 
 function consultarAPI(string $url): array {

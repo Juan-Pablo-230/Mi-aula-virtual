@@ -29,6 +29,14 @@ function esFechaValida(ymd) {
     if ((window.FERIADOS || []).includes(ymd)) {
         return { ok: false, motivo: 'No se puede tomar asistencia en un feriado nacional.' };
     }
+    if (window.HOY && ymd > window.HOY) {
+        return { ok: false, motivo: 'No se puede tomar asistencia en fechas futuras.' };
+    }
+    const bloqueo = (window.PERIODOS_BLOQUEADOS || []).find(p => ymd >= p.desde && ymd <= p.hasta);
+    if (bloqueo) {
+        const f = s => s.split('-').reverse().join('/');
+        return { ok: false, motivo: 'No se puede tomar asistencia entre el ' + f(bloqueo.desde) + ' y el ' + f(bloqueo.hasta) + (bloqueo.motivo ? ' (' + bloqueo.motivo + ')' : '') + '.' };
+    }
     return { ok: true, motivo: '' };
 }
 
@@ -166,7 +174,7 @@ async function guardarAsistencia() {
 
     try {
         const fd = new FormData();
-        fd.append('materia_id', window.MATERIA_ID);
+        agregarAmbito(fd);
         fd.append('fecha', window.FECHA);
         fd.append('cambios', JSON.stringify(cambios));
 
@@ -208,7 +216,7 @@ async function guardarAsistencia() {
 async function guardarTopeMateria() {
     const v = document.getElementById('topeMateria').value;
     const fd = new FormData();
-    fd.append('materia_id', window.MATERIA_ID);
+    agregarAmbito(fd);
     fd.append('faltas_maximas', v);
     const r = await fetchConSesion(API_ASIST + '?action=guardar_regla', { method: 'POST', body: fd });
     const d = await r.json();
@@ -253,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         const fd = new FormData();
-        fd.append('materia_id', window.MATERIA_ID);
+        agregarAmbito(fd);
         fd.append('alumno_id', topeAlumnoId);
         fd.append('tope', n);
         try {
@@ -271,7 +279,7 @@ document.addEventListener('DOMContentLoaded', function() {
 async function quitarLibre(alumnoId) {
     if (!confirm('¿Quitar el estado LIBRE a este alumno?')) return;
     const fd = new FormData();
-    fd.append('materia_id', window.MATERIA_ID);
+    agregarAmbito(fd);
     fd.append('alumno_id', alumnoId);
     const r = await fetchConSesion(API_ASIST + '?action=quitar_libre', { method: 'POST', body: fd });
     const d = await r.json();
@@ -281,4 +289,73 @@ async function quitarLibre(alumnoId) {
     } else {
         mostrarToast(d.mensaje, 'error');
     }
+}
+
+// ============================================================
+// PERÍODOS SIN ASISTENCIA (solo directivo / secretario)
+// ============================================================
+function abrirModalPeriodos() {
+    document.getElementById('periodoError').style.display = 'none';
+    document.getElementById('modalPeriodos').classList.remove('oculto');
+}
+
+function cerrarModalPeriodos() {
+    document.getElementById('modalPeriodos').classList.add('oculto');
+}
+
+async function eliminarPeriodo(id) {
+    if (!confirm('¿Quitar este período? Se volverá a poder pasar asistencia en esas fechas.')) return;
+    const fd = new FormData();
+    fd.append('id', id);
+    try {
+        const r = await fetchConSesion(API_ASIST + '?action=eliminar_periodo', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.ok) location.reload();
+        else mostrarToast(d.mensaje || 'No se pudo quitar el período', 'error');
+    } catch (ex) {
+        if (ex.message !== 'Sesión expirada') mostrarToast('Error de red: ' + ex.message, 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formPeriodo');
+    if (!form) return;
+    const modal = document.getElementById('modalPeriodos');
+    modal.addEventListener('click', e => { if (e.target === modal) cerrarModalPeriodos(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModalPeriodos(); });
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const err = document.getElementById('periodoError');
+        const desde = document.getElementById('periodoDesde').value;
+        const hasta = document.getElementById('periodoHasta').value;
+        if (!desde || !hasta) { err.textContent = 'Completá las dos fechas.'; err.style.display = 'block'; return; }
+        if (hasta < desde) { err.textContent = 'La fecha "hasta" no puede ser anterior a "desde".'; err.style.display = 'block'; return; }
+        try {
+            const r = await fetchConSesion(API_ASIST + '?action=guardar_periodo', { method: 'POST', body: new FormData(form) });
+            const d = await r.json();
+            if (d.ok) location.reload();
+            else { err.textContent = d.mensaje || 'Error al guardar'; err.style.display = 'block'; }
+        } catch (ex) {
+            if (ex.message === 'Sesión expirada') return;
+            err.textContent = 'Error de red: ' + ex.message; err.style.display = 'block';
+        }
+    });
+});
+
+
+// ============================================================
+// AMBITO: por materia o por día completo (según cómo esté configurado el curso)
+// ============================================================
+// Agrega al envío la materia, o la división si el curso toma asistencia por día completo.
+function agregarAmbito(fd) {
+    if (window.DIVISION_DIA) fd.append('division_dia', window.DIVISION_DIA);
+    else fd.append('materia_id', window.MATERIA_ID);
+}
+
+// Selector "Materia / curso": valores "m:ID" (materia) o "d:ID" (curso por día completo)
+function cambiarClase(sel) {
+    const [tipo, id] = sel.value.split(':');
+    document.getElementById('hiddenMateria').value = tipo === 'm' ? id : 0;
+    document.getElementById('hiddenDivisionDia').value = tipo === 'd' ? id : 0;
+    sel.form.submit();
 }

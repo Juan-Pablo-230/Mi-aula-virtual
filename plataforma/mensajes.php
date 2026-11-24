@@ -76,6 +76,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $destinoId && $destino) {
         }
     }
 
+    // Límite de frecuencia: evita inundar a alguien con mensajes
+    if (!$errorMsg) {
+        $recientes = $mongoDB->selectCollection('mensajes')->countDocuments([
+            'de' => $userId,
+            'fecha' => ['$gte' => new MongoDB\BSON\UTCDateTime((time() - 60) * 1000)],
+        ]);
+        if ($recientes >= 20) $errorMsg = 'Estás enviando mensajes muy rápido. Esperá un minuto e intentá de nuevo.';
+    }
+
     if (!$errorMsg && ($texto !== '' || $archivoId)) {
         $mongoDB->selectCollection('mensajes')->insertOne([
             'de' => $userId,

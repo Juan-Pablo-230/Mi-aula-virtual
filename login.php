@@ -22,6 +22,17 @@ $esFragmento = (
 if (isset($_COOKIE[session_name()])) {
     require_once __DIR__ . '/plataforma/config/database.php'; // inicia la sesión
     if (isset($_SESSION['user_id'])) {
+        if ($esFragmento) {
+            // Pedido por fetch desde el modal: NO redirigir (el navegador seguiría la redirección y se
+            // pegaría la página entera de la plataforma dentro del modal). Se avisa y el JS navega.
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<div id="yaLogueado" data-destino="/plataforma/publicaciones.php" style="text-align:center;">'
+               . '<h3>Ya iniciaste sesión</h3>'
+               . '<p style="margin:0.75rem 0 1.25rem;">Te estamos llevando a la plataforma…</p>'
+               . '<a href="/plataforma/publicaciones.php" class="btn-primario" style="display:inline-block;">Ir a la plataforma</a>'
+               . '</div>';
+            exit;
+        }
         header('Location: /plataforma/publicaciones.php');
         exit;
     }
@@ -99,6 +110,7 @@ if ($esFragmento) {
 </main>
 
 <script src="/assets/js/dni-numerico.js"></script>
+<script src="/assets/js/password-ojo.js"></script>
 <script>
 document.getElementById('formLogin').addEventListener('submit', async (e) => {
     e.preventDefault();

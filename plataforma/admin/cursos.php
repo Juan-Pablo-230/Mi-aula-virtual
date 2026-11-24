@@ -3,6 +3,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../models/AcademicModel.php';
+require_once __DIR__ . '/../core/Feriados.php';
+require_once __DIR__ . '/../core/Acceso.php';
+require_once __DIR__ . '/../core/AsistenciaReglas.php';
 
 Auth::checkRole(ROLES_ALL);
 if (($_SESSION['rol'] ?? '') === 'madre') {
@@ -20,6 +23,7 @@ $stmt->execute([$miInst]);
 $miInstNombre = $stmt->fetchColumn() ?: 'Mi institución';
 
 $niveles = AcademicModel::niveles($pdo);
+$modoDiaDisponible = AsistenciaReglas::modoPorDiaDisponible($pdo);
 $orientaciones = AcademicModel::orientaciones($pdo);
 $ciclos = AcademicModel::ciclosLectivos($pdo, $miInst);
 
@@ -95,6 +99,12 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                         <?php endforeach; ?>
                     </select>
                 </label>
+                <?php if ($modoDiaDisponible): ?>
+                <label class="label-checkbox">
+                    <input type="checkbox" name="asistencia_por_dia" value="1">
+                    <span>🗓️ <strong>Asistencia única</strong> (por día completo: una sola asistencia para todas las materias)</span>
+                </label>
+                <?php endif; ?>
                 <button class="btn-primario">Crear Curso</button>
             </form>
         </section>
@@ -216,33 +226,11 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                     <h3><?= h($a['nombre']) ?> <small style="color:#cfe2ff;">(<?= h($a['nivel']) ?>)</small></h3>
                     <div>
+                        <button type="button" class="btn-secundario" onclick="abrirEditarCurso(<?= (int)$a['id'] ?>)">✏️ Editar curso</button>
                         <button type="button" class="btn-secundario" onclick="duplicarAsignacion(<?= $a['id'] ?>)">📋 Duplicar</button>
                         <button type="button" class="btn-peligro" onclick="eliminarAsignacion(<?= $a['id'] ?>)">🗑️ Eliminar</button>
                     </div>
                 </div>
-
-                <?php $divs = AcademicModel::divisionesDeAsignacion($pdo, (int)$a['id']); ?>
-                <div class="divisiones-lista">
-                    <?php foreach ($divs as $d): ?>
-                        <div class="division-chip">
-                            <strong><?= h($d['nombre']) ?></strong>
-                            <?php if ($d['orientacion']): ?><small>(<?= h($d['orientacion']) ?>)</small><?php endif; ?>
-                            <button type="button" class="btn-peligro-sm" onclick="eliminarDivision(<?= $d['id'] ?>)">🗑️</button>
-                        </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($divs)): ?><small style="color:#a5c3e8;">Sin divisiones.</small><?php endif; ?>
-                </div>
-
-                <form class="form-division" data-asignacion="<?= $a['id'] ?>">
-                    <input type="text" name="nombre" placeholder="División (A, B...)" required maxlength="10" style="width:120px;">
-                    <select name="orientacion_id">
-                        <option value="">Sin orientación</option>
-                        <?php foreach ($orientaciones as $o): ?>
-                            <option value="<?= $o['id'] ?>"><?= h($o['nombre']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <button type="button" class="btn-secundario" onclick="this.closest('form').requestSubmit()">➕ Agregar División</button>
-                </form>
             </div>
         <?php endforeach; ?>
     </div>
@@ -340,6 +328,48 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
     </div>
 </div>
 
+<div class="modal-fondo oculto" id="modalEditarCurso">
+    <div class="modal-caja" style="min-width: 520px; max-width: 92vw; max-height: 90vh; overflow-y:auto;">
+        <h3>✏️ Editar curso</h3>
+        <form id="formEditarCurso">
+            <input type="hidden" name="id" id="ecId">
+            <label>Nombre del curso
+                <input type="text" name="nombre" id="ecNombre" required maxlength="100" autocomplete="off">
+            </label>
+            <?php if ($modoDiaDisponible): ?>
+            <input type="hidden" name="modo_enviado" value="1">
+            <label class="label-checkbox" title="Si está activado, en Asistencias se pasa lista una sola vez por día para todo el curso, en lugar de por materia.">
+                <input type="checkbox" name="asistencia_por_dia" id="ecPorDia" value="1">
+                <span>🗓️ <strong>Asistencia única</strong> (por día completo, en vez de por materia)</span>
+            </label>
+            <?php else: ?>
+            <small style="color:#fbbf24; display:block; margin:0.25rem 0;">Para elegir cómo se toma asistencia hay que ejecutar <code>sql/migracion_asistencia_por_dia.sql</code>.</small>
+            <?php endif; ?>
+        </form>
+
+        <hr style="border-color: var(--borde-vidrio); margin: 1rem 0;">
+        <h4 style="margin-bottom:0.5rem; color:#7dd3fc;">Divisiones</h4>
+        <div class="divisiones-lista" id="ecDivisiones"></div>
+        <form id="formEcDivision" style="margin-top:0.5rem;">
+            <input type="text" name="nombre" placeholder="División (A, B...)" required maxlength="10" style="width:120px;">
+            <select name="orientacion_id" id="ecOrientacion">
+                <option value="">Sin orientación</option>
+                <?php foreach ($orientaciones as $o): ?>
+                    <option value="<?= $o['id'] ?>"><?= h($o['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" class="btn-secundario">➕ Agregar a la lista</button>
+        </form>
+
+        <small style="color:#a5c3e8; display:block; margin-top:0.75rem;">Los cambios (nombre, asistencia y divisiones) se aplican todos juntos al tocar <strong>Guardar cambios</strong>.</small>
+        <div id="ecError" class="alerta danger" style="display:none;"></div>
+        <div class="modal-acciones">
+            <button type="button" class="btn-secundario" onclick="cerrarEditarCurso()">Cerrar</button>
+            <button type="submit" form="formEditarCurso" class="btn-primario">Guardar cambios</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-fondo oculto" id="modalDuplicar">
     <div class="modal-caja" style="min-width: 500px; max-width: 90vw;">
         <h3>📋 Duplicar curso</h3>
@@ -348,6 +378,14 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
             <label>Nombre del nuevo curso
                 <input type="text" name="nombre" id="dupNombre" required maxlength="100">
             </label>
+
+            <?php if ($modoDiaDisponible): ?>
+            <input type="hidden" name="modo_enviado" value="1">
+            <label class="label-checkbox" title="Si está activado, en Asistencias se pasa lista una sola vez por día para todo el curso, en lugar de por materia.">
+                <input type="checkbox" name="asistencia_por_dia" id="dupPorDia" value="1">
+                <span>🗓️ <strong>Asistencia única</strong> (por día completo, en vez de por materia)</span>
+            </label>
+            <?php endif; ?>
 
             <label class="label-checkbox">
                 <input type="checkbox" name="copiar_divisiones" value="1" id="dupCopiarDivisiones" checked onchange="toggleSeccionDuplicar('divisiones')">
@@ -381,7 +419,8 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
 window.CURSOS_DATA = {
     asignaciones: <?= jsonJs($asignaciones) ?>,
     divisionesPorAsignacion: <?= jsonJs($divisionesPorAsignacion) ?>,
-    materiasPorAsignacion: <?= jsonJs($materiasPorAsignacion) ?>
+    materiasPorAsignacion: <?= jsonJs($materiasPorAsignacion) ?>,
+    orientaciones: <?= jsonJs($orientaciones) ?>
 };
 </script>
 <script src="/assets/js/admin_cursos.js?v=<?= time() ?>"></script>

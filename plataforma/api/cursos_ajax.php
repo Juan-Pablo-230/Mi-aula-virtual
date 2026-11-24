@@ -3,6 +3,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../models/AcademicModel.php';
+require_once __DIR__ . '/../core/Feriados.php';
+require_once __DIR__ . '/../core/Acceso.php';
+require_once __DIR__ . '/../core/AsistenciaReglas.php';
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(ROLES_ALL);
@@ -38,8 +41,51 @@ try {
             $nombre = trim($_POST['nombre'] ?? '');
             $nivelId = (int)($_POST['nivel_id'] ?? 0);
             if ($nombre === '' || !$nivelId) jsonResponse(['ok' => false, 'mensaje' => 'Faltan datos'], 400);
-            $pdo->prepare("INSERT INTO asignaciones (nombre, nivel_id, institucion_id) VALUES (?, ?, ?)")
-                ->execute([$nombre, $nivelId, $miInst]);
+            $porDia = !empty($_POST['asistencia_por_dia']) && AsistenciaReglas::modoPorDiaDisponible($pdo) ? 1 : 0;
+            if ($porDia) {
+                $pdo->prepare("INSERT INTO asignaciones (nombre, nivel_id, institucion_id, asistencia_por_dia) VALUES (?, ?, ?, 1)")
+                    ->execute([$nombre, $nivelId, $miInst]);
+            } else {
+                $pdo->prepare("INSERT INTO asignaciones (nombre, nivel_id, institucion_id) VALUES (?, ?, ?)")
+                    ->execute([$nombre, $nivelId, $miInst]);
+            }
+            jsonResponse(['ok' => true]);
+            break;
+
+        case 'editar_asignacion':
+            $id = (int)($_POST['id'] ?? 0);
+            $nombre = trim($_POST['nombre'] ?? '');
+            if (!$id || $nombre === '') jsonResponse(['ok' => false, 'mensaje' => 'El nombre es obligatorio'], 400);
+            $existe = $pdo->prepare("SELECT 1 FROM asignaciones WHERE id = ? AND institucion_id = ?");
+            $existe->execute([$id, $miInst]);
+            if (!$existe->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Curso no encontrado'], 404);
+
+            // No repetir el nombre de otro curso de la institución
+            $dup = $pdo->prepare("SELECT 1 FROM asignaciones WHERE institucion_id = ? AND id <> ? AND LOWER(TRIM(nombre)) = LOWER(?)");
+            $dup->execute([$miInst, $id, $nombre]);
+            if ($dup->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Ya existe otro curso con ese nombre'], 400);
+
+            $pdo->prepare("UPDATE asignaciones SET nombre = ? WHERE id = ? AND institucion_id = ?")->execute([$nombre, $id, $miInst]);
+            // El checkbox desmarcado no se envía: "modo_enviado" indica que el formulario trae ese campo
+            if (isset($_POST['modo_enviado']) && AsistenciaReglas::modoPorDiaDisponible($pdo)) {
+                $porDia = !empty($_POST['asistencia_por_dia']) ? 1 : 0;
+                $pdo->prepare("UPDATE asignaciones SET asistencia_por_dia = ? WHERE id = ? AND institucion_id = ?")->execute([$porDia, $id, $miInst]);
+            }
+            jsonResponse(['ok' => true]);
+            break;
+
+        case 'guardar_modo_asistencia':
+            $id = (int)($_POST['id'] ?? 0);
+            $porDia = !empty($_POST['por_dia']) ? 1 : 0;
+            if (!AsistenciaReglas::modoPorDiaDisponible($pdo)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Falta ejecutar la migración sql/migracion_asistencia_por_dia.sql'], 400);
+            }
+            // Solo cursos de la propia institución
+            $stmt = $pdo->prepare("UPDATE asignaciones SET asistencia_por_dia = ? WHERE id = ? AND institucion_id = ?");
+            $stmt->execute([$porDia, $id, $miInst]);
+            $existe = $pdo->prepare("SELECT 1 FROM asignaciones WHERE id = ? AND institucion_id = ?");
+            $existe->execute([$id, $miInst]);
+            if (!$existe->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Curso no encontrado'], 404);
             jsonResponse(['ok' => true]);
             break;
 
@@ -234,7 +280,7 @@ try {
             $nombreNuevo = trim($_POST['nombre'] ?? '');
             if (!$id || $nombreNuevo === '') jsonResponse(['ok' => false, 'mensaje' => 'Faltan datos'], 400);
 
-            $stmt = $pdo->prepare("SELECT nivel_id, institucion_id FROM asignaciones WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT *  FROM asignaciones WHERE id = ?");
             $stmt->execute([$id]);
             $original = $stmt->fetch();
             if (!$original) throw new MensajeUsuarioException('Curso original no existe');
@@ -252,6 +298,15 @@ try {
             $pdo->prepare("INSERT INTO asignaciones (nombre, nivel_id, institucion_id) VALUES (?, ?, ?)")
                 ->execute([$nombreNuevo, $original['nivel_id'], $miInst]);
             $nuevoId = (int)$pdo->lastInsertId();
+            // Asistencia única (por día): lo que se eligió en el formulario; si no vino el campo, igual que el original
+            if (AsistenciaReglas::modoPorDiaDisponible($pdo)) {
+                $porDiaCopia = isset($_POST['modo_enviado'])
+                    ? !empty($_POST['asistencia_por_dia'])
+                    : !empty($original['asistencia_por_dia']);
+                if ($porDiaCopia) {
+                    $pdo->prepare("UPDATE asignaciones SET asistencia_por_dia = 1 WHERE id = ?")->execute([$nuevoId]);
+                }
+            }
 
             if ($copiarDivisiones && !empty($divisionesIds)) {
                 $idsDiv = array_map('intval', $divisionesIds);

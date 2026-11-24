@@ -100,7 +100,8 @@ if ($action === 'guardar') {
             jsonResponse(['ok' => false, 'mensaje' => 'Formato no permitido (solo JPG, PNG, GIF, WEBP)']);
         }
         $ext = $permitidos[$mime];
-        $nombreArchivo = 'perfil_' . $id . '_' . time() . '.' . $ext;
+        // Nombre aleatorio (no adivinable): la carpeta es pública y son fotos de personas, muchas menores
+        $nombreArchivo = 'perfil_' . $id . '_' . bin2hex(random_bytes(16)) . '.' . $ext;
         $rutaDestino = $fotoDir . $nombreArchivo;
         if (!move_uploaded_file($_FILES['foto']['tmp_name'], $rutaDestino)) {
             jsonResponse(['ok' => false, 'mensaje' => 'No se pudo guardar la imagen en el servidor']);
@@ -117,6 +118,8 @@ if ($action === 'guardar') {
     UserModel::updatePerfilCompleto($pdo, $id, $nombre, $apellido, $dni, $email, $pass, $fotoNombre);
 
     $_SESSION['nombre'] = $nombre . ' ' . $apellido;
+    // Si cambió la contraseña, el resto de las sesiones de la cuenta quedan cerradas
+    if ($pass !== null) Auth::refrescarSesionTrasCambioPassword($pdo, $id);
     if ($fotoNombre) $_SESSION['foto_perfil'] = $fotoNombre;
 
     jsonResponse(['ok' => true]);

@@ -40,7 +40,24 @@ try {
     die('Servicio no disponible. Intentá más tarde.');
 }
 
+// Nunca mostrar errores internos al usuario: se registran en el log y se responde algo genérico.
+// También atrapa errores de tipo (TypeError) que no cubren los catch (Exception) de cada endpoint,
+// por ejemplo cuando llega "campo[]=x" donde se esperaba un texto.
+ini_set('display_errors', '0');
+set_exception_handler(function (Throwable $e) {
+    error_log('Excepción no controlada: ' . get_class($e) . ': ' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine());
+    if (!headers_sent()) http_response_code(500);
+    if (function_exists('pedidoEsJson') && pedidoEsJson()) {
+        if (!headers_sent()) header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'mensaje' => 'Error del servidor']);
+    } else {
+        if (!headers_sent()) header('Content-Type: text/plain; charset=utf-8');
+        echo 'Ocurrió un error en el servidor. Intentá de nuevo.';
+    }
+});
+
 if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.gc_maxlifetime', (string)SESION_INACTIVIDAD_SEG);
     ini_set('session.cookie_httponly', '1');
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_path', '/');
@@ -52,5 +69,6 @@ if (session_status() === PHP_SESSION_NONE) {
 
 aplicarCabecerasSeguridad();
 csrfVerificar();
+limitarCamposPost();
 
 date_default_timezone_set('America/Argentina/Buenos_Aires');

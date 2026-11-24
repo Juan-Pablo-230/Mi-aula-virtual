@@ -116,6 +116,142 @@ async function eliminarAsignacion(id) {
     submitCon('eliminar_asignacion', fd, 'Curso eliminado');
 }
 
+// ============================================================
+// EDITAR CURSO (nombre, modo de asistencia, divisiones y orientación)
+// Todo se edita en el modal y se confirma junto con "Guardar cambios".
+// ============================================================
+let ec = null; // { id, divs: [{id|null, nombre, orientacion_id}], eliminadas: [ids], sucio: bool }
+
+function ecOrientaciones() {
+    const o = {};
+    ((window.CURSOS_DATA || {}).orientaciones || []).forEach(x => o[x.id] = x.nombre);
+    return o;
+}
+
+function ecRenderDivisiones() {
+    const orient = ecOrientaciones();
+    document.getElementById('ecDivisiones').innerHTML = ec.divs.length === 0
+        ? '<small style="color:#a5c3e8;">Sin divisiones.</small>'
+        : ec.divs.map((d, i) => `
+            <div class="division-chip">
+                <strong>${escapeHtml(d.nombre)}</strong>
+                ${d.orientacion_id && orient[d.orientacion_id] ? `<small>(${escapeHtml(orient[d.orientacion_id])})</small>` : ''}
+                ${d.id ? '' : '<small style="color:#fbbf24;">nueva</small>'}
+                <button type="button" class="btn-peligro-sm" onclick="ecQuitarDivision(${i})">🗑️</button>
+            </div>`).join('');
+}
+
+function abrirEditarCurso(id) {
+    const data = window.CURSOS_DATA || {};
+    const curso = (data.asignaciones || []).find(a => a.id == id);
+    if (!curso) { mostrarToast('Curso no encontrado', 'error'); return; }
+
+    ec = {
+        id: Number(id),
+        divs: ((data.divisionesPorAsignacion || {})[id] || []).map(d => ({ id: Number(d.id), nombre: d.nombre, orientacion_id: d.orientacion_id ? Number(d.orientacion_id) : null })),
+        eliminadas: [],
+        sucio: false,
+    };
+    document.getElementById('ecId').value = id;
+    document.getElementById('ecNombre').value = curso.nombre;
+    const chk = document.getElementById('ecPorDia');
+    if (chk) { chk.checked = Number(curso.asistencia_por_dia) === 1; chk.dataset.original = chk.checked ? '1' : '0'; }
+    document.getElementById('ecError').style.display = 'none';
+    document.getElementById('formEcDivision').reset();
+    ecRenderDivisiones();
+    document.getElementById('modalEditarCurso').classList.remove('oculto');
+}
+
+function cerrarEditarCurso() {
+    if (ec && (ec.sucio || ecHayCambiosFormulario()) && !confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) return;
+    ec = null;
+    cerrarModal('modalEditarCurso');
+}
+
+function ecHayCambiosFormulario() {
+    const curso = ((window.CURSOS_DATA || {}).asignaciones || []).find(a => a.id == ec.id);
+    const chk = document.getElementById('ecPorDia');
+    return (curso && document.getElementById('ecNombre').value.trim() !== curso.nombre)
+        || (chk && (chk.checked ? '1' : '0') !== chk.dataset.original);
+}
+
+function ecQuitarDivision(i) {
+    const d = ec.divs[i];
+    if (d.id) ec.eliminadas.push(d.id);
+    ec.divs.splice(i, 1);
+    ec.sucio = true;
+    ecRenderDivisiones();
+}
+
+document.getElementById('formEcDivision')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!ec) return;
+    const f = e.target;
+    const nombre = f.nombre.value.trim().toUpperCase();
+    if (!nombre) return;
+    if (ec.divs.some(d => d.nombre.toUpperCase() === nombre)) {
+        const err = document.getElementById('ecError');
+        err.textContent = 'Ya existe la división ' + nombre + ' en este curso.'; err.style.display = 'block';
+        return;
+    }
+    document.getElementById('ecError').style.display = 'none';
+    ec.divs.push({ id: null, nombre, orientacion_id: f.orientacion_id.value ? Number(f.orientacion_id.value) : null });
+    ec.sucio = true;
+    f.reset();
+    ecRenderDivisiones();
+});
+
+async function ecLlamar(accion, fd) {
+    const r = await fetchConSesion(API + '?action=' + accion, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.mensaje || 'No se pudo guardar');
+}
+
+document.getElementById('formEditarCurso')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!ec) return;
+    const form = e.target;
+    const err = document.getElementById('ecError');
+    err.style.display = 'none';
+
+    const nuevas = ec.divs.filter(d => !d.id);
+    const chk = document.getElementById('ecPorDia');
+    const avisos = [];
+    if (chk && (chk.checked ? '1' : '0') !== chk.dataset.original) {
+        avisos.push(chk.checked
+            ? 'Este curso pasará a tomar asistencia por DÍA COMPLETO (una sola lista por día para todas las materias). Las asistencias por materia ya cargadas no se borran, pero dejan de mostrarse al pasar lista en este curso.'
+            : 'Este curso volverá a tomar asistencia POR MATERIA. Las asistencias por día ya cargadas no se borran.');
+    }
+    if (ec.eliminadas.length) {
+        avisos.push('Se eliminarán ' + ec.eliminadas.length + ' división(es).');
+    }
+    if (avisos.length && !confirm(avisos.join('\n\n') + '\n\n¿Guardar los cambios?')) return;
+
+    const btn = document.querySelector('button[form="formEditarCurso"]');
+    if (btn) btn.disabled = true;
+    try {
+        await ecLlamar('editar_asignacion', new FormData(form));
+        for (const id of ec.eliminadas) {
+            const fd = new FormData(); fd.append('id', id);
+            await ecLlamar('eliminar_division', fd);
+        }
+        for (const d of nuevas) {
+            const fd = new FormData();
+            fd.append('asignacion_id', ec.id); fd.append('nombre', d.nombre);
+            if (d.orientacion_id) fd.append('orientacion_id', d.orientacion_id);
+            await ecLlamar('crear_division', fd);
+        }
+        mostrarToast('Curso actualizado', 'ok');
+        ec.sucio = false;
+        setTimeout(() => location.reload(), 600);
+    } catch (ex) {
+        if (ex.message === 'Sesión expirada') return;
+        err.textContent = ex.message + ' (los cambios anteriores a este error ya se guardaron; recargá la página para verlos)';
+        err.style.display = 'block';
+        if (btn) btn.disabled = false;
+    }
+});
+
 async function eliminarDivision(id) {
     if (!confirm('¿Eliminar esta división?')) return;
     const fd = new FormData(); fd.append('id', id);
@@ -170,6 +306,9 @@ function duplicarAsignacion(id) {
     document.getElementById('dupNombre').value = original.nombre + ' (copia)';
     document.getElementById('dupCopiarDivisiones').checked = true;
     document.getElementById('dupCopiarMaterias').checked = true;
+    // La copia hereda el modo de asistencia del curso original (se puede cambiar acá)
+    const dupPorDia = document.getElementById('dupPorDia');
+    if (dupPorDia) dupPorDia.checked = Number(original.asistencia_por_dia) === 1;
 
     // Divisiones
     const divs = (data.divisionesPorAsignacion || {})[id] || [];

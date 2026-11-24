@@ -46,6 +46,9 @@ define('CALIF_A_NUMERICO', [
     'MB' => 8, 'MB+' => 9, 'EX' => 10,
 ]);
 
+// Una sesión sin actividad durante este tiempo (segundos) se cierra sola
+define('SESION_INACTIVIDAD_SEG', 7200);
+
 define('PASSWORD_MIN', 8);
 define('PASSWORD_MAX', 128);
 define('PASSWORD_TEMPORAL', 'Temporal123');

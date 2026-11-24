@@ -261,7 +261,10 @@ try {
             foreach ($archivoIds as $aid) {
                 $usado = $mongoDB->selectCollection('entregas')->countDocuments(['archivo_id' => $aid])
                       + $mongoPublicaciones->countDocuments(['archivo_id' => $aid])
-                      + $mongoBibliografia->countDocuments(['archivo_id' => $aid]);
+                      + $mongoBibliografia->countDocuments(['archivo_id' => $aid])
+                      // El mismo archivo (deduplicado por hash) puede estar en otra tarea o en un mensaje
+                      + $mongoDB->selectCollection('tareas')->countDocuments(['archivo_id' => $aid])
+                      + $mongoDB->selectCollection('mensajes')->countDocuments(['archivo_id' => $aid]);
 
                 if ($usado === 0) {
                     $archivo = $mongoArchivos->findOne(['_id' => $aid]);

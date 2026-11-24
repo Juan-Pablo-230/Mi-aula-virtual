@@ -43,6 +43,8 @@
 </div>
 
 <script src="/assets/js/dni-numerico.js"></script>
+<script src="/assets/js/password-ojo.js"></script>
+<script src="/assets/js/modal-scroll.js"></script>
 <script>
 const LOGIN_URL = '/login.php?fragmento=1';
 
@@ -59,7 +61,11 @@ async function abrirLoginModal() {
                 headers: { 'X-Requested-With': 'fetch' },
                 credentials: 'include'
             });
+            // Si ya hay sesión iniciada, ir directo a la plataforma (nunca mostrar su HTML dentro del modal)
+            if (r.redirected && !r.url.includes('login.php')) { window.location.href = r.url; return; }
             const html = await r.text();
+            const aviso = html.match(/id="yaLogueado" data-destino="([^"]+)"/);
+            if (aviso) { window.location.href = aviso[1]; return; }
             document.getElementById('modalLoginContenido').innerHTML = html;
             loginCargado = true;
             engancharFormLogin();

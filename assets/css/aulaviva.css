@@ -2319,3 +2319,50 @@ main form input.input-tope {
     border-color: var(--celeste);
     background: rgba(255, 255, 255, 0.1);
 }
+
+/* Ojito para mostrar / ocultar contraseñas (assets/js/password-ojo.js) */
+.pw-wrap {
+    position: relative;
+    display: block;
+    width: 100%;
+}
+.pw-wrap > input {
+    padding-right: 2.75rem !important;
+}
+.pw-ojo {
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-top: 0.15rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.05rem;
+    line-height: 1;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0.4rem;
+    opacity: 0.8;
+}
+.pw-ojo:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
+
+
+/* Botón "Cerrar sesión" del menú del perfil (ahora es un formulario POST) */
+.dropdown-menu .form-logout { margin: 0; }
+.dropdown-menu .form-logout button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.7rem 1rem;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.dropdown-menu .form-logout button:hover { background: rgba(255, 255, 255, 0.1); }
+
+/* Con una ventana emergente abierta, el contenido de atrás no se desplaza (assets/js/modal-scroll.js) */
+body.modal-abierto { overflow: hidden; }
+.modal-fondo { overscroll-behavior: contain; }

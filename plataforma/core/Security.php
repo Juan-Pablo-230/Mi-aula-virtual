@@ -4,9 +4,15 @@
  * Se carga desde config/database.php, justo después de iniciar la sesión.
  */
 
+/**
+ * ¿La petición llegó por HTTPS? X-Forwarded-Proto solo se respeta si el servidor está detrás
+ * de un proxy/balanceador propio y se declaró en el .env con TRUST_PROXY=1; si no, cualquier
+ * cliente podría falsearlo.
+ */
 function esHttps(): bool {
-    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
+    $confiaProxy = ($_ENV['TRUST_PROXY'] ?? getenv('TRUST_PROXY') ?: '0') === '1';
+    return $confiaProxy && (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 }
 
 function aplicarCabecerasSeguridad(): void {
@@ -68,4 +74,54 @@ function csrfVerificar(): void {
         echo $mensaje;
     }
     exit;
+}
+
+
+// ============================================================
+// LÍMITES DE LARGO EN CAMPOS DE TEXTO
+// ============================================================
+/**
+ * Rechaza (400) cualquier campo POST que supere el largo máximo de su tipo.
+ * Evita que alguien guarde textos gigantes. Los campos no listados usan LARGO_POR_DEFECTO.
+ * Solo se mira $_POST: los archivos tienen su propio límite de tamaño.
+ */
+const LARGO_POR_DEFECTO = 1000;
+const LARGOS_CAMPOS = [
+    'titulo' => 200, 'nombre' => 100, 'apellido' => 100, 'nombre_familiar' => 100,
+    'email' => 255, 'dni' => 20, 'dni_familiar' => 20, 'concepto' => 150,
+    'direccion' => 255, 'telefono' => 50, 'duenio_dni' => 20,
+    'contenido' => 10000, 'descripcion' => 10000,
+    'comentario' => 2000, 'comentario_alumno' => 2000,
+    'mensaje' => 5000, 'texto' => 5000,
+    'password' => 128, 'password2' => 128, 'password_actual' => 128,
+    'cambios' => 200000,   // JSON de asistencia: un objeto con todos los alumnos de la materia
+];
+
+function limitarCamposPost(): void {
+    $metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($metodo !== 'POST' || empty($_POST)) return;
+
+    $revisar = function ($valor, string $campo) use (&$revisar) {
+        if (is_array($valor)) {
+            foreach ($valor as $v) { $r = $revisar($v, $campo); if ($r !== null) return $r; }
+            return null;
+        }
+        if (!is_string($valor)) return null;
+        $max = LARGOS_CAMPOS[$campo] ?? LARGO_POR_DEFECTO;
+        return mb_strlen($valor) > $max ? $campo . ' (máximo ' . $max . ' caracteres)' : null;
+    };
+    foreach ($_POST as $campo => $valor) {
+        $r = $revisar($valor, (string)$campo);
+        if ($r === null) continue;
+        http_response_code(400);
+        $mensaje = 'El texto es demasiado largo en el campo ' . $r . '.';
+        if (pedidoEsJson()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'mensaje' => $mensaje]);
+        } else {
+            header('Content-Type: text/plain; charset=utf-8');
+            echo $mensaje;
+        }
+        exit;
+    }
 }

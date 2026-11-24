@@ -76,7 +76,9 @@ function obtenerCalificacionesAlumno($mongoDB, int $alumnoId, int $materiaId): a
 function obtenerMateriasLibres(PDO $pdo, $mongoDB, int $alumnoId): array {
     $libres = $mongoDB->selectCollection('alumno_libre')->find(['alumno_id' => $alumnoId])->toArray();
     if (empty($libres)) return [];
-    $materiaIds = array_map(fn($l) => (int)$l['materia_id'], $libres);
+    // materia_id 0 = asistencia por día completo (no es una materia real)
+    $materiaIds = array_values(array_filter(array_map(fn($l) => (int)$l['materia_id'], $libres)));
+    if (empty($materiaIds)) $materiaIds = [0];
     $placeholders = implode(',', array_fill(0, count($materiaIds), '?'));
     $stmt = $pdo->prepare("SELECT id, nombre FROM materias WHERE id IN ($placeholders)");
     $stmt->execute($materiaIds);
@@ -85,7 +87,7 @@ function obtenerMateriasLibres(PDO $pdo, $mongoDB, int $alumnoId): array {
     $resultado = [];
     foreach ($libres as $l) {
         $mid = (int)$l['materia_id'];
-        $resultado[] = ['id' => $mid, 'nombre' => $nombres[$mid] ?? ('Materia ' . $mid), 'motivo' => $l['motivo'] ?? 'Exceso de inasistencias'];
+        $resultado[] = ['id' => $mid, 'nombre' => $mid === 0 ? 'Asistencia general (por día)' : ($nombres[$mid] ?? ('Materia ' . $mid)), 'motivo' => $l['motivo'] ?? 'Exceso de inasistencias'];
     }
     return $resultado;
 }
