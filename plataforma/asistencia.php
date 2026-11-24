@@ -185,7 +185,7 @@ if ($materiaId) {
     if (!empty($alumnos)) {
         $aIds = array_map(fn($a) => (int)$a['id'], $alumnos);
         $regla = $mongoDB->selectCollection('reglas_asistencia')->findOne(['materia_id' => $materiaId]);
-        $topeMateria = $regla['faltas_maximas'] ?? 10;
+        $topeMateria = (int)($regla['faltas_maximas'] ?? 10);
         $topesP = $mongoDB->selectCollection('topes_alumno')->find(['materia_id' => $materiaId, 'alumno_id' => ['$in' => $aIds]])->toArray();
         foreach ($topesP as $t) $topesPorAlumno[(int)$t['alumno_id']] = (int)$t['tope'];
 
@@ -213,6 +213,7 @@ if ($materiaId) {
     }
 }
 
+$esDirectivoVista = in_array($rol, ['directivo', 'secretario', 'madre'], true);
 $mostrarLibres = !empty($_GET['mostrar_libres']);
 $alumnosVisibles = [];
 foreach ($alumnos as $a) {
@@ -259,8 +260,21 @@ include __DIR__ . '/views/menu.php';
                 <input type="date" name="fecha" id="fechaAsistencia" value="<?= h($fecha) ?>" style="width:11rem; margin:0;">
             </label>
             <label style="margin:0;"><input type="checkbox" name="mostrar_libres" value="1" <?= $mostrarLibres ? 'checked' : '' ?> onchange="this.form.submit()"> Mostrar libres</label>
+            <?php if ($esDirectivoVista && $materiaId): ?>
+            <label style="margin:0; flex-basis:100%;">⚙️ Tope general de faltas (queda LIBRE al llegar a este número):
+                <span style="display:inline-flex; gap:0.5rem; align-items:center;">
+                    <input type="number" id="topeMateria" class="input-tope" value="<?= (int)$topeMateria ?>" min="1" max="999" onkeydown="if(event.key==='Enter'){event.preventDefault();guardarTopeMateria();}">
+                    <button type="button" class="btn-primario" onclick="guardarTopeMateria()">Guardar tope</button>
+                </span>
+            </label>
+            <?php endif; ?>
+            <?php if ($esDirectivoVista && $materiaId): ?>
+            <small style="color:#a5c3e8; flex-basis:100%;">Aplica a todos los alumnos de la materia, salvo los que tengan un tope personal (botón ✏️ en cada tarjeta).</small>
+            <?php endif; ?>
         </form>
     </div>
+
+    <div id="fechaError" class="alerta danger" style="display:none; margin-bottom:1rem;"></div>
 
     <?php if ($materiaId): ?>
         <?php if (empty($alumnosVisibles)): ?>
@@ -282,6 +296,9 @@ include __DIR__ . '/views/menu.php';
                             <?php else: ?>Faltas: <strong><?= $faltas ?>/<?= $tope ?></strong>
                             <?php endif; ?>
                         </div>
+                        <?php if ($esDirectivoVista): ?>
+                            <button type="button" class="btn-mini" style="margin-top:0.35rem; font-size:0.7rem;" title="<?= isset($topesPorAlumno[$aid]) ? 'Tope personal' : 'Tope general' ?> — cambiar tope de este alumno" onclick="event.stopPropagation(); cambiarTope(<?= $aid ?>, <?= (int)$tope ?>, <?= h(jsonJs($a['apellido'] . ', ' . $a['nombre'])) ?>)">✏️ Tope<?= isset($topesPorAlumno[$aid]) ? ' (personal)' : '' ?></button>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -292,6 +309,24 @@ include __DIR__ . '/views/menu.php';
         <?php endif; ?>
     <?php endif; ?>
 </main>
+<?php if ($esDirectivoVista): ?>
+<div class="modal-fondo oculto" id="modalTope">
+    <div class="modal-caja" style="min-width: 22rem;">
+        <h3>✏️ Tope de faltas del alumno</h3>
+        <p id="modalTopeAlumno" style="color:#cfe2ff; font-size:0.9rem;"></p>
+        <form id="formTope">
+            <label>Cantidad de faltas para quedar LIBRE
+                <input type="number" id="topeAlumnoInput" min="1" max="999" required>
+            </label>
+            <div id="topeError" class="alerta danger" style="display:none;"></div>
+            <div class="modal-acciones">
+                <button type="button" class="btn-secundario" onclick="cerrarModalTope()">Cancelar</button>
+                <button type="submit" class="btn-primario">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 <script>
 window.MATERIA_ID = <?= (int)$materiaId ?>;
 window.FECHA = <?= jsonJs($fecha) ?>;

@@ -203,6 +203,9 @@ try {
                 ['$set' => ['faltas_maximas' => $faltasMax]],
                 ['upsert' => true]
             );
+            // Reevaluar a quienes ya tienen faltas en la materia (si bajó el tope, pueden quedar libres)
+            $conFaltas = $colAsistencia->distinct('alumno_id', ['materia_id' => $materiaId, 'estado' => 'ausente']);
+            foreach ($conFaltas as $aid) evaluarLibre($mongoDB, (int)$aid, $materiaId);
             jsonResponse(['ok' => true]);
             break;
 
@@ -226,6 +229,7 @@ try {
                 ['$set' => ['tope' => $tope]],
                 ['upsert' => true]
             );
+            evaluarLibre($mongoDB, $alumnoId, $materiaId);
             jsonResponse(['ok' => true]);
             break;
 

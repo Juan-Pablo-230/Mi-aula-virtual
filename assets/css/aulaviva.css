@@ -2299,3 +2299,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* Campo numérico del tope de faltas (mismo estilo que el selector de fecha) */
+.input-tope,
+main form input.input-tope {
+    font-family: inherit;
+    width: 6rem;
+    margin-top: 0.35rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.625rem;
+    border: 0.0625rem solid var(--borde-vidrio);
+    background: rgba(255, 255, 255, 0.06);
+    color: #eaf2ff;
+    font-size: 0.95rem;
+    color-scheme: dark;
+}
+.input-tope:focus {
+    outline: none;
+    border-color: var(--celeste);
+    background: rgba(255, 255, 255, 0.1);
+}

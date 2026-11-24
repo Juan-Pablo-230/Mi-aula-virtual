@@ -220,23 +220,53 @@ async function guardarTopeMateria() {
     }
 }
 
-async function cambiarTope(alumnoId, topeActual) {
-    const nuevo = prompt('Tope de faltas para este alumno:', topeActual);
-    if (nuevo === null) return;
-    const n = parseInt(nuevo, 10);
-    if (isNaN(n) || n < 1) {
-        mostrarToast('Ingresá un número válido mayor a 0.', 'error');
-        return;
-    }
-    const fd = new FormData();
-    fd.append('materia_id', window.MATERIA_ID);
-    fd.append('alumno_id', alumnoId);
-    fd.append('tope', n);
-    const r = await fetchConSesion(API_ASIST + '?action=guardar_tope_alumno', { method: 'POST', body: fd });
-    const d = await r.json();
-    if (d.ok) location.reload();
-    else mostrarToast(d.mensaje, 'error');
+let topeAlumnoId = null;
+
+function cambiarTope(alumnoId, topeActual, nombre) {
+    topeAlumnoId = alumnoId;
+    document.getElementById('modalTopeAlumno').textContent = nombre || '';
+    document.getElementById('topeAlumnoInput').value = topeActual;
+    document.getElementById('topeError').style.display = 'none';
+    document.getElementById('modalTope').classList.remove('oculto');
+    setTimeout(() => document.getElementById('topeAlumnoInput').select(), 50);
 }
+
+function cerrarModalTope() {
+    document.getElementById('modalTope').classList.add('oculto');
+    topeAlumnoId = null;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formTope');
+    if (!form) return;
+    document.getElementById('modalTope').addEventListener('click', e => {
+        if (e.target.id === 'modalTope') cerrarModalTope();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModalTope(); });
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const err = document.getElementById('topeError');
+        const n = parseInt(document.getElementById('topeAlumnoInput').value, 10);
+        if (isNaN(n) || n < 1) {
+            err.textContent = 'Ingresá un número válido mayor a 0.';
+            err.style.display = 'block';
+            return;
+        }
+        const fd = new FormData();
+        fd.append('materia_id', window.MATERIA_ID);
+        fd.append('alumno_id', topeAlumnoId);
+        fd.append('tope', n);
+        try {
+            const r = await fetchConSesion(API_ASIST + '?action=guardar_tope_alumno', { method: 'POST', body: fd });
+            const d = await r.json();
+            if (d.ok) location.reload();
+            else { err.textContent = d.mensaje || 'Error al guardar'; err.style.display = 'block'; }
+        } catch (ex) {
+            if (ex.message === 'Sesión expirada') return;
+            err.textContent = 'Error de red: ' + ex.message; err.style.display = 'block';
+        }
+    });
+});
 
 async function quitarLibre(alumnoId) {
     if (!confirm('¿Quitar el estado LIBRE a este alumno?')) return;
