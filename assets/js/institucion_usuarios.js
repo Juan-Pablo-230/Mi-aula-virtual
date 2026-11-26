@@ -9,6 +9,7 @@
 
 let asignacionesActuales = [];
 let divisionActual = 0;
+let cursadasActuales = [];
 
 function materiasCompatiblesConDivision(divisionId) {
     const div = (window.DIVISIONES || []).find(d => d.id == divisionId);
@@ -128,13 +129,8 @@ function actualizarAsignacionForm() {
 
     if (rol === 'alumno') {
         seccion.style.display = 'block';
-        let html = `<label>División <select name="division_id" id="selectDivisionAlumno"><option value="0">— Sin división —</option>`;
-        (window.DIVISIONES || []).forEach(d => {
-            const sel = (d.id == divisionActual) ? 'selected' : '';
-            html += `<option value="${escHtmlIU(d.id)}" ${sel}>${escHtmlIU(d.asignacion)} ${escHtmlIU(d.nombre)}</option>`;
-        });
-        html += `</select></label>`;
-        cont.innerHTML = html;
+        cont.innerHTML = '<div id="cursadasAlumno"></div>';
+        CursadasEditor.montar(document.getElementById('cursadasAlumno'), { divisiones: window.DIVISIONES || [], materiasDe: materiasCompatiblesConDivision, cursadas: cursadasActuales });
     } else if (rol === 'docente') {
         seccion.style.display = 'block';
         const asignadas = new Set((asignacionesActuales || []).map(a => `${a.materia_id}-${a.division_id}`));
@@ -163,10 +159,20 @@ function actualizarAsignacionForm() {
     }
 }
 
+// El rol solo se elige al crear; al editar queda de solo lectura.
+function configurarRolSelect(rol, esEdicion) {
+    const sel = document.getElementById('userRol');
+    sel.value = rol;
+    sel.disabled = esEdicion;
+    sel.title = esEdicion ? 'El rol no se puede cambiar' : '';
+}
+
 function abrirModalCrear() {
     document.getElementById('modalUserTitulo').textContent = 'Crear usuario';
     document.getElementById('formUser').reset();
     document.getElementById('userId').value = '';
+    document.getElementById('userNombre').required = true;
+    configurarRolSelect('', false);
     document.getElementById('campoPasswordInfo').style.display = 'block';
     document.getElementById('campoActivo').style.display = 'none';
     document.getElementById('campoEmail').style.display = 'none';
@@ -176,6 +182,7 @@ function abrirModalCrear() {
     document.getElementById('contenidoAsignacion').innerHTML = '';
     asignacionesActuales = [];
     divisionActual = 0;
+    cursadasActuales = [];
     document.getElementById('modalUser').classList.remove('oculto');
 }
 
@@ -186,7 +193,8 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('userApellido').value = u.apellido;
     document.getElementById('userDni').value = u.dni;
     document.getElementById('userEmail').value = u.email || '';
-    document.getElementById('userRol').value = u.rol;
+    configurarRolSelect(u.rol, true);
+    document.getElementById('userNombre').required = u.rol !== 'familiar';
     document.getElementById('campoPasswordInfo').style.display = 'none';
     document.getElementById('campoActivo').style.display = 'block';
     document.getElementById('userActivo').value = u.activo;
@@ -194,6 +202,7 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('btnGuardarUser').textContent = 'Guardar cambios';
     asignacionesActuales = asigs || [];
     divisionActual = divId || 0;
+    cursadasActuales = u.cursadas || [];
     actualizarAsignacionForm();
     document.getElementById('modalUser').classList.remove('oculto');
 }
@@ -223,6 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const isEdit = document.getElementById('userId').value !== '';
         const url = window.INST_USER_API + (isEdit ? '&action=editar' : '&action=crear');
         const fd = new FormData(form);
+        if (!fd.has('rol')) fd.set('rol', form.rol.value); // select bloqueado al editar
         const rol = form.rol.value;
         if (rol === 'alumno') {
             const selectDiv = form.querySelector('select[name="division_id"]');

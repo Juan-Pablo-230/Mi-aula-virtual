@@ -5,6 +5,7 @@ require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/Acceso.php';
 require_once __DIR__ . '/../core/Feriados.php';
 require_once __DIR__ . '/../core/AsistenciaReglas.php';
+require_once __DIR__ . '/../models/AcademicModel.php';
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(['docente', 'directivo', 'secretario', 'madre']);
@@ -102,8 +103,17 @@ function alumnoEnAmbito(PDO $pdo, array $yo, array $amb, int $alumnoId): bool {
 /** División del alumno para guardar el registro: la del curso en modo día; la vigente en modo materia. */
 function divisionParaRegistro(PDO $pdo, array $amb, int $alumnoId): int {
     if ($amb['dia']) return $amb['divisionDia'];
-    $st = $pdo->prepare("SELECT division_id FROM alumnos_division WHERE alumno_id = ?");
-    $st->execute([$alumnoId]);
+    $st = $pdo->prepare("
+        SELECT ad.division_id
+        FROM alumnos_division ad
+        JOIN divisiones d ON d.id = ad.division_id
+        JOIN asignaciones a ON a.id = d.asignacion_id
+        JOIN materias m ON m.id = ?
+        WHERE ad.alumno_id = ? AND (m.institucion_id IS NULL OR m.institucion_id = a.institucion_id)
+        " . AcademicModel::sqlCursaMateria('ad.alumno_id', 'ad.division_id', 'm.id') . "
+        ORDER BY EXISTS (SELECT 1 FROM materias_asignaciones ma WHERE ma.materia_id = m.id AND ma.asignacion_id = d.asignacion_id) DESC, ad.division_id LIMIT 1
+    ");
+    $st->execute([$amb['materiaId'], $alumnoId]);
     return (int)$st->fetchColumn();
 }
 
@@ -153,7 +163,7 @@ try {
             $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
             $stmt->execute([$alumnoId]);
             $u = $stmt->fetch();
-            if ($u) $libres[] = $u['apellido'] . ', ' . $u['nombre'];
+            if ($u) $libres[] = nombreCompleto($u);
         }
     }
 

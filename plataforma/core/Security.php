@@ -89,7 +89,7 @@ const LARGO_POR_DEFECTO = 1000;
 const LARGOS_CAMPOS = [
     'titulo' => 200, 'nombre' => 100, 'apellido' => 100, 'nombre_familiar' => 100,
     'email' => 255, 'dni' => 20, 'dni_familiar' => 20, 'concepto' => 150,
-    'direccion' => 255, 'telefono' => 50, 'duenio_dni' => 20,
+    'cursadas_json' => 12000, 'direccion' => 255, 'pais' => 100, 'localidad' => 150, 'calle' => 150, 'altura' => 6, 'telefono' => 50, 'duenio_dni' => 20,
     'contenido' => 10000, 'descripcion' => 10000,
     'comentario' => 2000, 'comentario_alumno' => 2000,
     'mensaje' => 5000, 'texto' => 5000,

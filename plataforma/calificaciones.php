@@ -124,6 +124,7 @@ if ($rol === 'alumno') {
             FROM usuarios u
             JOIN alumnos_division_historial h ON h.alumno_id = u.id AND h.activo = 1 AND h.año_lectivo = ?
             WHERE h.division_id IN ($ph) AND u.rol = 'alumno' AND u.activo = 1
+            " . AcademicModel::sqlCursaMateria('u.id', 'h.division_id', (string)(int)$materiaId) . "
             ORDER BY u.apellido, u.nombre
         ");
         $stmt->execute(array_merge([$añoSel], $divIds));
@@ -163,7 +164,7 @@ foreach ($alumnos as $a) {
     <?php foreach ($datos as $d): $a = $d['alumno']; $prom = $d['promedio']; $conf = $d['confirmado']; ?>
         <div class="panel-vidrio" style="margin-bottom:1.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
-                <h3 style="margin:0;"><?= $rol !== 'alumno' ? '👤 ' . h($a['apellido'] . ', ' . $a['nombre']) : '👤 Mis calificaciones' ?></h3>
+                <h3 style="margin:0;"><?= $rol !== 'alumno' ? '👤 ' . h(nombreCompleto($a)) : '👤 Mis calificaciones' ?></h3>
                 <?php if ($puedeCalificar): ?>
                     <button class="btn-secundario" onclick="abrirAgregarExtra(<?= (int)$a['id'] ?>)">➕ Cargar nota</button>
                 <?php endif; ?>

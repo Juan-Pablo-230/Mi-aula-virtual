@@ -1,4 +1,11 @@
 <?php
+/** "Apellido, Nombre" tolerando nombre NULL (familiares cargados solo con DNI). */
+function nombreCompleto(array $u): string {
+    $ap = trim((string)($u['apellido'] ?? ''));
+    $no = trim((string)($u['nombre'] ?? ''));
+    return $no === '' ? ($ap !== '' ? $ap : 'Sin nombre (DNI ' . ($u['dni'] ?? '—') . ')') : ($ap === '' ? $no : $ap . ', ' . $no);
+}
+
 function h(?string $s): string {
     return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8');
 }

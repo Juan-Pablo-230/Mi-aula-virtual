@@ -27,6 +27,41 @@ function puedeGestionar(PDO $pdo, int $targetId, bool $esMadre, int $miInstituci
     return $inst !== false && (int)$inst === $miInstitucionId;
 }
 
+/** La división pertenece a la institución (0 = sin división, siempre válido). */
+function divisionEsDeInstitucion(PDO $pdo, int $divisionId, int $instId): bool {
+    if ($divisionId <= 0) return true;
+    $st = $pdo->prepare("SELECT 1 FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id WHERE d.id = ? AND a.institucion_id = ?");
+    $st->execute([$divisionId, $instId]);
+    return (bool)$st->fetchColumn();
+}
+
+/**
+ * Guarda la cursada del alumno en una institución según el formulario:
+ * división completa, o (solo_materias) solo las materias tildadas dentro de esa división.
+ */
+function aplicarCursadaAlumno(PDO $pdo, int $alumnoId, int $divisionId, int $instId): void {
+    // Formulario nuevo: lista de cursadas (varias divisiones a la vez, con cursadas completas y parciales)
+    if (isset($_POST['cursadas_json'])) {
+        $lista = json_decode((string)$_POST['cursadas_json'], true);
+        if (!is_array($lista)) throw new MensajeUsuarioException('Las cursadas del alumno no son válidas');
+        AcademicModel::guardarCursadas($pdo, $alumnoId, $instId, $lista);
+        return;
+    }
+    $solo = !empty($_POST['solo_materias']) && $divisionId > 0;
+    if (!$solo) {
+        AcademicModel::asignarDivisionAlumno($pdo, $alumnoId, $divisionId, $instId);
+        return;
+    }
+    $materias = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['materias_ids'] ?? [])))));
+    if (!$materias) throw new MensajeUsuarioException('Elegí al menos una materia para la cursada parcial');
+    foreach ($materias as $mid) {
+        if (!esMateriaCompatible($pdo, $mid, $divisionId)) {
+            throw new MensajeUsuarioException('Una de las materias elegidas no corresponde a esa división');
+        }
+    }
+    AcademicModel::asignarCursadaParcial($pdo, $alumnoId, $divisionId, $materias, $instId, !empty($_POST['sumar_nuevas']));
+}
+
 function esMateriaCompatible(PDO $pdo, int $materiaId, int $divisionId): bool {
     $stmt = $pdo->prepare("SELECT orientacion_id FROM materias WHERE id = ?");
     $stmt->execute([$materiaId]);
@@ -70,13 +105,34 @@ try {
             if (!dniValido($dni)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido: solo números (6 a 12 dígitos)'], 400);
             }
-            if (!dniValido($dni)) {
-                jsonResponse(['ok' => false, 'mensaje' => 'DNI inválido'], 400);
-            }
             if (!in_array($rol, ['alumno','docente','secretario','directivo','familiar'])) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Rol inválido'], 400);
             }
-            if (UserModel::findByDni($pdo, $dni)) {
+            $yaExiste = UserModel::findByDni($pdo, $dni);
+            if ($yaExiste) {
+                $instExistente = (int)($yaExiste['institucion_id'] ?? 0);
+                if ($yaExiste['rol'] === 'alumno' && $instExistente > 0 && $instExistente !== $miInstitucionId) {
+                    $st = $pdo->prepare("SELECT nombre FROM instituciones WHERE id = ?");
+                    $st->execute([$instExistente]);
+                    $nombreInst = (string)$st->fetchColumn();
+                    if ($esMadre) {
+                        jsonResponse(['ok' => false, 'mensaje' => "Ya existe un alumno con ese DNI, registrado en «$nombreInst». Podés pasarlo de institución desde la lista de usuarios de esa institución."], 400);
+                    }
+                    $st = $pdo->prepare("SELECT COUNT(*) FROM solicitudes_transferencia WHERE alumno_id = ? AND institucion_destino_id = ? AND estado = 'pendiente'");
+                    $st->execute([(int)$yaExiste['id'], $miInstitucionId]);
+                    jsonResponse([
+                        'ok' => false,
+                        'codigo' => 'otra_institucion',
+                        'mensaje' => "Ese DNI ya está registrado como alumno en «$nombreInst».",
+                        'alumno_id' => (int)$yaExiste['id'],
+                        'alumno' => nombreCompleto($yaExiste),
+                        'institucion' => $nombreInst,
+                        'solicitud_pendiente' => (int)$st->fetchColumn() > 0,
+                    ], 409);
+                }
+                if ($instExistente > 0 && $instExistente !== $miInstitucionId) {
+                    jsonResponse(['ok' => false, 'mensaje' => 'Ya existe un usuario con ese DNI en otra institución'], 400);
+                }
                 jsonResponse(['ok' => false, 'mensaje' => 'Ya existe un usuario con ese DNI'], 400);
             }
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -100,12 +156,14 @@ try {
 
             if ($rol === 'alumno') {
                 $divisionId = (int)($_POST['division_id'] ?? 0);
-                AcademicModel::asignarDivisionAlumno($pdo, (int)$id, $divisionId);
+                if ($institucionId > 0 && !divisionEsDeInstitucion($pdo, $divisionId, $institucionId)) {
+                    throw new MensajeUsuarioException('La división elegida no pertenece a la institución');
+                }
+                aplicarCursadaAlumno($pdo, (int)$id, $divisionId, $institucionId);
                 $dniFamiliar = trim($_POST['dni_familiar'] ?? '');
                 if ($dniFamiliar !== '' && !dniValido($dniFamiliar)) {
                     throw new MensajeUsuarioException('DNI del familiar inválido: solo números (6 a 12 dígitos)');
                 }
-                $nombreFamiliar = trim($_POST['nombre_familiar'] ?? '');
                 if ($dniFamiliar !== '') {
                     $stmt = $pdo->prepare("SELECT id, rol FROM usuarios WHERE dni = ?");
                     $stmt->execute([$dniFamiliar]);
@@ -121,10 +179,9 @@ try {
                     } else {
                         $stmt = $pdo->prepare("
                             INSERT INTO usuarios (nombre, apellido, dni, email, password_hash, rol, primer_ingreso, institucion_id)
-                            VALUES (?, ?, ?, NULL, ?, 'familiar', 1, ?)
+                            VALUES (NULL, ?, ?, NULL, ?, 'familiar', 1, ?)
                         ");
                         $stmt->execute([
-                            $nombreFamiliar ?: 'Familiar de ' . $apellido,
                             $apellido, $dniFamiliar,
                             Auth::hashPassword('Temporal123'),
                             $institucionId > 0 ? $institucionId : null,
@@ -142,6 +199,7 @@ try {
                     foreach ($asignaciones as $par) {
                         [$materiaId, $divisionId] = array_map('intval', explode('-', $par));
                         if ($materiaId <= 0 || $divisionId <= 0) continue;
+                        if ($miInstitucionId > 0 && !divisionEsDeInstitucion($pdo, $divisionId, $miInstitucionId)) continue;
                         if (!esMateriaCompatible($pdo, $materiaId, $divisionId)) continue;
                         $insAsig->execute([$id, $materiaId, $divisionId]);
                     }
@@ -160,12 +218,18 @@ try {
             $email    = trim($_POST['email'] ?? '');
             $rol      = $_POST['rol'] ?? '';
             $activo   = $_POST['activo'] ?? '1';
+            // El rol no se puede cambiar al editar: se toma siempre el que ya tiene el usuario
+            $stRol = $pdo->prepare("SELECT rol FROM usuarios WHERE id = ?");
+            $stRol->execute([(int)$id]);
+            $rolActual = (string)$stRol->fetchColumn();
+            if ($rolActual === '' || $rolActual === 'madre') jsonResponse(['ok' => false, 'mensaje' => 'Usuario inválido'], 400);
+            $rol = $rolActual;
 
             if (!$id) jsonResponse(['ok' => false, 'mensaje' => 'ID inválido'], 400);
             if (!puedeGestionar($pdo, $id, $esMadre, $miInstitucionId)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'No podés gestionar usuarios de otra institución'], 403);
             }
-            if ($nombre === '' || $apellido === '' || $dni === '') {
+            if (($nombre === '' && $rol !== 'familiar') || $apellido === '' || $dni === '') {
                 jsonResponse(['ok' => false, 'mensaje' => 'Nombre, apellido y DNI son obligatorios'], 400);
             }
             if (!dniValido($dni)) {
@@ -182,7 +246,7 @@ try {
             $pdo->beginTransaction();
 
             UserModel::update($pdo, $id, [
-                'nombre'   => $nombre,
+                'nombre'   => $nombre !== '' ? $nombre : null,
                 'apellido' => $apellido,
                 'dni'      => $dni,
                 'email'    => $email !== '' ? $email : null,
@@ -190,13 +254,17 @@ try {
                 'activo'   => (int)$activo
             ]);
 
-            if ($rol !== 'alumno') AcademicModel::asignarDivisionAlumno($pdo, (int)$id, 0);
-            $pdo->prepare("DELETE FROM asignaciones_docente WHERE docente_id = ?")->execute([$id]);
+            $instDelUsuario = (int)($pdo->query("SELECT institucion_id FROM usuarios WHERE id = " . (int)$id)->fetchColumn());
+            if ($rol !== 'alumno') AcademicModel::asignarDivisionAlumno($pdo, (int)$id, 0, $instDelUsuario);
+            AcademicModel::borrarAsignacionesDocente($pdo, (int)$id, $esMadre ? 0 : $miInstitucionId);
             $pdo->prepare("DELETE FROM familiares_alumnos WHERE alumno_id = ?")->execute([$id]);
 
             if ($rol === 'alumno') {
                 $divisionId = (int)($_POST['division_id'] ?? 0);
-                AcademicModel::asignarDivisionAlumno($pdo, (int)$id, $divisionId);
+                if ($instDelUsuario > 0 && !divisionEsDeInstitucion($pdo, $divisionId, $instDelUsuario)) {
+                    throw new MensajeUsuarioException('La división elegida no pertenece a la institución del alumno');
+                }
+                aplicarCursadaAlumno($pdo, (int)$id, $divisionId, $instDelUsuario);
                 $dniFamiliar = trim($_POST['dni_familiar'] ?? '');
                 if ($dniFamiliar !== '' && !dniValido($dniFamiliar)) {
                     throw new MensajeUsuarioException('DNI del familiar inválido: solo números (6 a 12 dígitos)');
@@ -216,6 +284,7 @@ try {
                     foreach ($asignaciones as $par) {
                         [$materiaId, $divisionId] = array_map('intval', explode('-', $par));
                         if ($materiaId <= 0 || $divisionId <= 0) continue;
+                        if ($miInstitucionId > 0 && !divisionEsDeInstitucion($pdo, $divisionId, $miInstitucionId)) continue;
                         if (!esMateriaCompatible($pdo, $materiaId, $divisionId)) continue;
                         $insAsig->execute([$id, $materiaId, $divisionId]);
                     }
@@ -277,6 +346,67 @@ try {
                 $pdo->rollBack();
                 throw $e;
             }
+            break;
+
+        case 'solicitar_transferencia':
+            if ($esMadre) jsonResponse(['ok' => false, 'mensaje' => 'La madre transfiere directamente, sin solicitud'], 400);
+            $alumnoId = (int)($_POST['alumno_id'] ?? 0);
+            $nota = mb_substr(trim($_POST['nota'] ?? ''), 0, 300);
+            $st = $pdo->prepare("SELECT institucion_id FROM usuarios WHERE id = ? AND rol = 'alumno'");
+            $st->execute([$alumnoId]);
+            $origenId = $st->fetchColumn();
+            if ($origenId === false) jsonResponse(['ok' => false, 'mensaje' => 'Alumno no encontrado'], 404);
+            $origenId = (int)$origenId;
+            if ($origenId <= 0) jsonResponse(['ok' => false, 'mensaje' => 'El alumno no pertenece a ninguna institución'], 400);
+            if ($origenId === $miInstitucionId) jsonResponse(['ok' => false, 'mensaje' => 'El alumno ya pertenece a tu institución'], 400);
+            $st = $pdo->prepare("SELECT COUNT(*) FROM solicitudes_transferencia WHERE alumno_id = ? AND institucion_destino_id = ? AND estado = 'pendiente'");
+            $st->execute([$alumnoId, $miInstitucionId]);
+            if ((int)$st->fetchColumn() > 0) jsonResponse(['ok' => false, 'mensaje' => 'Ya enviaste una solicitud pendiente para este alumno'], 400);
+            $pdo->prepare("INSERT INTO solicitudes_transferencia (alumno_id, institucion_origen_id, institucion_destino_id, solicitada_por, nota) VALUES (?, ?, ?, ?, ?)")
+                ->execute([$alumnoId, $origenId, $miInstitucionId, $userId, $nota !== '' ? $nota : null]);
+            jsonResponse(['ok' => true]);
+            break;
+
+        case 'resolver_solicitud':
+        case 'cancelar_solicitud':
+            if ($esMadre) jsonResponse(['ok' => false, 'mensaje' => 'Acción no disponible para este rol'], 403);
+            $solId = (int)($_POST['id'] ?? 0);
+            $decision = $_POST['decision'] ?? '';
+            $esCancelar = $action === 'cancelar_solicitud';
+            if (!$esCancelar && !in_array($decision, ['aprobar', 'denegar'], true)) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Decisión inválida'], 400);
+            }
+            $pdo->beginTransaction();
+            $st = $pdo->prepare("SELECT * FROM solicitudes_transferencia WHERE id = ? FOR UPDATE");
+            $st->execute([$solId]);
+            $sol = $st->fetch();
+            if (!$sol || $sol['estado'] !== 'pendiente') {
+                $pdo->rollBack();
+                jsonResponse(['ok' => false, 'mensaje' => 'La solicitud no existe o ya fue resuelta'], 400);
+            }
+            if ($esCancelar) {
+                if ((int)$sol['institucion_destino_id'] !== $miInstitucionId) { $pdo->rollBack(); jsonResponse(['ok' => false, 'mensaje' => 'Sin permiso'], 403); }
+                $pdo->prepare("UPDATE solicitudes_transferencia SET estado = 'cancelada', resuelta_por = ?, resuelta_en = NOW() WHERE id = ?")->execute([$userId, $solId]);
+                $pdo->commit();
+                jsonResponse(['ok' => true]);
+            }
+            // Solo decide la institución donde está hoy el alumno
+            $st = $pdo->prepare("SELECT institucion_id FROM usuarios WHERE id = ?");
+            $st->execute([(int)$sol['alumno_id']]);
+            $instActual = (int)$st->fetchColumn();
+            if ($instActual !== $miInstitucionId) {
+                $pdo->rollBack();
+                jsonResponse(['ok' => false, 'mensaje' => 'El alumno ya no pertenece a tu institución'], 403);
+            }
+            if ($decision === 'denegar') {
+                $pdo->prepare("UPDATE solicitudes_transferencia SET estado = 'denegada', resuelta_por = ?, resuelta_en = NOW() WHERE id = ?")->execute([$userId, $solId]);
+                $pdo->commit();
+                jsonResponse(['ok' => true]);
+            }
+            $pdo->prepare("UPDATE solicitudes_transferencia SET estado = 'aprobada', resuelta_por = ?, resuelta_en = NOW() WHERE id = ?")->execute([$userId, $solId]);
+            AcademicModel::moverAlumnoAInstitucion($pdo, (int)$sol['alumno_id'], (int)$sol['institucion_destino_id']);
+            $pdo->commit();
+            jsonResponse(['ok' => true]);
             break;
 
         default:

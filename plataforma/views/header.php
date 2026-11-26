@@ -30,11 +30,28 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
     <title>Mi Aula Virtual</title>
     <meta name="csrf-token" content="<?= h(csrfToken()) ?>">
     <link rel="shortcut icon" href="/assets/img/icon.png" type="image/x-icon">
-    <link rel="stylesheet" href="/assets/css/aulaviva.css">
-    <script src="/assets/js/aulaviva.js"></script>
-    <script src="/assets/js/dni-numerico.js"></script>
-    <script src="/assets/js/password-ojo.js"></script>
-    <script src="/assets/js/modal-scroll.js"></script>
+    <?php
+    // Versión por fecha de modificación: el navegador no usa una copia vieja del CSS/JS tras actualizar
+    $verAsset = function (string $ruta): string {
+        $f = __DIR__ . '/../..' . $ruta;
+        return $ruta . (is_file($f) ? '?v=' . filemtime($f) : '');
+    };
+    ?>
+    <link rel="stylesheet" href="<?= h($verAsset('/assets/css/aulaviva.css')) ?>">
+    <style>
+        /* Botón "Cerrar sesión" del menú del perfil: mismo aspecto que los demás ítems del menú */
+        .dropdown-menu .form-logout { margin: 0; padding: 0; }
+        .dropdown-menu .form-logout button {
+            display: block; width: 100%; text-align: left; margin: 0;
+            padding: 0.7rem 1rem; background: transparent; border: none; border-radius: 0;
+            color: #fff; font: inherit; font-size: 0.9rem; cursor: pointer; box-shadow: none;
+        }
+        .dropdown-menu .form-logout button:hover { background: rgba(255, 255, 255, 0.1); }
+    </style>
+    <script src="<?= h($verAsset('/assets/js/aulaviva.js')) ?>"></script>
+    <script src="<?= h($verAsset('/assets/js/dni-numerico.js')) ?>"></script>
+    <script src="<?= h($verAsset('/assets/js/password-ojo.js')) ?>"></script>
+    <script src="<?= h($verAsset('/assets/js/modal-scroll.js')) ?>"></script>
 </head>
 <body>
 
@@ -81,7 +98,7 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
         <div class="perfil-dropdown" id="perfilDropdown">
             <button class="perfil-btn" onclick="togglePerfil()">
                 <div class="perfil-texto">
-                    <strong><?= h($currentUser['apellido'] . ', ' . $currentUser['nombre']) ?></strong>
+                    <strong><?= h(nombreCompleto($currentUser)) ?></strong>
                     <small><?= h(ucfirst($rolActual)) ?> · DNI <?= h($currentUser['dni']) ?></small>
                 </div>
                 <img src="<?= h(fotoPerfilUrl($currentUser['foto_perfil'] ?? null)) ?>" alt="" class="avatar">

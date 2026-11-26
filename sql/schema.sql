@@ -4,7 +4,11 @@ USE miaulavirtual;
 CREATE TABLE instituciones (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(200) NOT NULL UNIQUE,
-    direccion VARCHAR(300) NULL,
+    direccion VARCHAR(300) NULL,          -- texto armado: calle altura, localidad, país
+    pais VARCHAR(100) NULL,
+    localidad VARCHAR(150) NULL,
+    calle VARCHAR(150) NULL,
+    altura INT UNSIGNED NULL,
     telefono VARCHAR(50) NULL,
     email VARCHAR(200) NULL,
     activo BOOLEAN DEFAULT TRUE,
@@ -26,7 +30,7 @@ CREATE TABLE ciclos_lectivos (
 
 CREATE TABLE usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
+    nombre VARCHAR(100) NULL,            -- NULL para familiares cargados solo con DNI
     apellido VARCHAR(100) NOT NULL,
     dni VARCHAR(20) NOT NULL,
     email VARCHAR(255) NULL,
@@ -116,8 +120,11 @@ CREATE TABLE asignaciones_docente (
 );
 
 CREATE TABLE alumnos_division (
-    alumno_id INT PRIMARY KEY,
+    alumno_id INT NOT NULL,
     division_id INT NOT NULL,
+    PRIMARY KEY (alumno_id, division_id),
+    solo_materias TINYINT(1) NOT NULL DEFAULT 0,
+    sumar_nuevas TINYINT(1) NOT NULL DEFAULT 0,
     FOREIGN KEY (alumno_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     FOREIGN KEY (division_id) REFERENCES divisiones(id) ON DELETE CASCADE
 );
@@ -146,4 +153,35 @@ CREATE TABLE alumno_materia_exclusion (
     PRIMARY KEY (alumno_id, materia_id),
     FOREIGN KEY (alumno_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     FOREIGN KEY (materia_id) REFERENCES materias(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS solicitudes_transferencia (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    alumno_id INT NOT NULL,
+    institucion_origen_id INT NOT NULL,
+    institucion_destino_id INT NOT NULL,
+    solicitada_por INT NULL,
+    resuelta_por INT NULL,
+    estado ENUM('pendiente','aprobada','denegada','cancelada') NOT NULL DEFAULT 'pendiente',
+    nota VARCHAR(300) NULL,
+    creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resuelta_en DATETIME NULL,
+    FOREIGN KEY (alumno_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (institucion_origen_id) REFERENCES instituciones(id) ON DELETE CASCADE,
+    FOREIGN KEY (institucion_destino_id) REFERENCES instituciones(id) ON DELETE CASCADE,
+    FOREIGN KEY (solicitada_por) REFERENCES usuarios(id) ON DELETE SET NULL,
+    FOREIGN KEY (resuelta_por) REFERENCES usuarios(id) ON DELETE SET NULL,
+    KEY idx_sol_origen (institucion_origen_id, estado),
+    KEY idx_sol_destino (institucion_destino_id, estado),
+    KEY idx_sol_alumno (alumno_id, estado)
+);
+
+CREATE TABLE IF NOT EXISTS alumno_materia_inscripcion (
+    alumno_id INT NOT NULL,
+    materia_id INT NOT NULL,
+    division_id INT NOT NULL,
+    PRIMARY KEY (alumno_id, materia_id),
+    FOREIGN KEY (alumno_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (materia_id) REFERENCES materias(id) ON DELETE CASCADE,
+    FOREIGN KEY (division_id) REFERENCES divisiones(id) ON DELETE CASCADE,
+    KEY idx_ami_division (division_id)
 );

@@ -7,7 +7,7 @@ Auth::checkRole(['madre']);
 $instituciones = $pdo->query("
     SELECT i.*,
            (SELECT COUNT(*) FROM usuarios u WHERE u.institucion_id = i.id) AS cant_usuarios,
-           (SELECT CONCAT(u.apellido, ', ', u.nombre) FROM usuarios u
+           (SELECT CONCAT_WS(', ', u.apellido, u.nombre) FROM usuarios u
               WHERE u.institucion_id = i.id AND u.rol IN ('directivo','secretario')
               ORDER BY u.id LIMIT 1) AS duenio
     FROM instituciones i ORDER BY i.nombre
@@ -28,7 +28,14 @@ $instituciones = $pdo->query("
             <fieldset style="border:0.0625rem solid var(--borde-vidrio); border-radius:0.5rem; padding:0.75rem 1rem; margin-bottom:1rem;">
                 <legend style="padding:0 0.5rem; color:#7dd3fc; font-weight:600;">Datos de la institución</legend>
                 <label>Nombre <input type="text" name="nombre" required maxlength="200"></label>
-                <label>Dirección <input type="text" name="direccion" maxlength="300"></label>
+                <label>País
+                    <select name="pais" id="instPais" required><option value="">Cargando países…</option></select>
+                </label>
+                <label>Localidad
+                    <select name="localidad" id="instLocalidad" required disabled><option value="">— Elegí primero el país —</option></select>
+                </label>
+                <label>Calle <input type="text" name="calle" id="instCalle" required maxlength="150"></label>
+                <label>Altura <input type="text" name="altura" id="instAltura" required inputmode="numeric" pattern="[0-9]{1,6}" maxlength="6" placeholder="Solo números"></label>
                 <label>Teléfono <input type="text" name="telefono" maxlength="50"></label>
                 <label>Email institucional <input type="email" name="email" maxlength="200"></label>
             </fieldset>

@@ -3,9 +3,51 @@
 // ============================================================
 const API_INST = '/plataforma/api/instituciones_ajax.php';
 
+const API_GEO = '/plataforma/api/geo_ajax.php';
+
+async function cargarPaises() {
+    const sel = document.getElementById('instPais');
+    if (!sel) return;
+    try {
+        const r = await fetchConSesion(API_GEO + '?action=paises');
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.mensaje || 'Error');
+        sel.innerHTML = '<option value="">— Elegí un país —</option>';
+        d.paises.forEach(p => { const o = document.createElement('option'); o.value = p.valor; o.textContent = p.nombre; sel.appendChild(o); });
+    } catch (ex) {
+        if (ex.message === 'Sesión expirada') return;
+        sel.innerHTML = '<option value="">No se pudo cargar la lista</option>';
+        mostrarToast('No se pudo cargar los países: ' + ex.message, 'error');
+    }
+}
+
+async function cargarLocalidades(pais) {
+    const sel = document.getElementById('instLocalidad');
+    sel.disabled = true;
+    if (!pais) { sel.innerHTML = '<option value="">— Elegí primero el país —</option>'; return; }
+    sel.innerHTML = '<option value="">Cargando localidades…</option>';
+    try {
+        const r = await fetchConSesion(API_GEO + '?action=localidades&pais=' + encodeURIComponent(pais));
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.mensaje || 'Error');
+        sel.innerHTML = '<option value="">— Elegí una localidad —</option>';
+        d.localidades.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; sel.appendChild(o); });
+        sel.disabled = false;
+    } catch (ex) {
+        if (ex.message === 'Sesión expirada') return;
+        sel.innerHTML = '<option value="">Sin localidades disponibles</option>';
+        mostrarToast(ex.message, 'error');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('formInstitucion');
     if (!form) return;
+
+    cargarPaises();
+    document.getElementById('instPais').addEventListener('change', e => cargarLocalidades(e.target.value));
+    // Altura: solo números
+    document.getElementById('instAltura').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();

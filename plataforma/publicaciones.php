@@ -167,7 +167,7 @@ foreach ($pubsRaw as $p) {
             $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
             $stmt->execute([$aid]);
             $a = $stmt->fetch();
-            $autoresCache[$aid] = $a ? ($a['apellido'] . ', ' . $a['nombre']) : 'Desconocido';
+            $autoresCache[$aid] = $a ? (nombreCompleto($a)) : 'Desconocido';
         }
         $autorNombre = $autoresCache[$aid];
     }

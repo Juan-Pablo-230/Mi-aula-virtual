@@ -40,7 +40,7 @@ function nombreAutorMaterias(PDO $pdo, int $autorId, array &$cache): string {
     $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
     $stmt->execute([$autorId]);
     $u = $stmt->fetch();
-    $cache[$autorId] = $u ? ($u['apellido'] . ', ' . $u['nombre']) : 'Docente';
+    $cache[$autorId] = $u ? (nombreCompleto($u)) : 'Docente';
     return $cache[$autorId];
 }
 

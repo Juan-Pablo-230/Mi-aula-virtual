@@ -225,7 +225,7 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
             <div class="panel-vidrio curso-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                     <h3><?= h($a['nombre']) ?> <small style="color:#cfe2ff;">(<?= h($a['nivel']) ?>)</small></h3>
-                    <div>
+                    <div class="curso-acciones">
                         <button type="button" class="btn-secundario" onclick="abrirEditarCurso(<?= (int)$a['id'] ?>)">✏️ Editar curso</button>
                         <button type="button" class="btn-secundario" onclick="duplicarAsignacion(<?= $a['id'] ?>)">📋 Duplicar</button>
                         <button type="button" class="btn-peligro" onclick="eliminarAsignacion(<?= $a['id'] ?>)">🗑️ Eliminar</button>

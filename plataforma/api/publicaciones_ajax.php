@@ -86,7 +86,7 @@ try {
             $stmtAutor = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
             $stmtAutor->execute([(int)$_SESSION['user_id']]);
             $autorData = $stmtAutor->fetch();
-            $autorNombre = $autorData ? ($autorData['apellido'] . ', ' . $autorData['nombre']) : 'Docente';
+            $autorNombre = $autorData ? (nombreCompleto($autorData)) : 'Docente';
 
             $archivoId = null;
             $archivoNombre = null;

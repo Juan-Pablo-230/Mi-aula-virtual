@@ -17,16 +17,21 @@ $tab = $_GET['tab'] ?? 'usuarios';
 if (!in_array($tab, ['usuarios', 'importacion', 'estadisticas'])) $tab = 'usuarios';
 
 $usuarios = $pdo->prepare("
-    SELECT u.*, d.id AS division_id, d.nombre AS division_nombre, a.nombre AS asignacion_nombre
+    SELECT u.*
     FROM usuarios u
-    LEFT JOIN alumnos_division ad ON ad.alumno_id = u.id
-    LEFT JOIN divisiones d ON d.id = ad.division_id
-    LEFT JOIN asignaciones a ON a.id = d.asignacion_id
     WHERE u.institucion_id = ?
     ORDER BY u.rol, u.apellido, u.nombre
 ");
 $usuarios->execute([$institucionId]);
 $usuarios = $usuarios->fetchAll();
+// Un alumno puede tener varias cursadas a la vez en la institución
+$cursadasPorAlumno = AcademicModel::cursadasPorAlumno($pdo, $institucionId);
+foreach ($usuarios as &$uCur) $uCur['cursadas'] = $cursadasPorAlumno[(int)$uCur['id']] ?? [];
+unset($uCur);
+
+$otrasInstituciones = $pdo->prepare("SELECT id, nombre FROM instituciones WHERE id <> ? ORDER BY nombre");
+$otrasInstituciones->execute([$institucionId]);
+$otrasInstituciones = $otrasInstituciones->fetchAll();
 
 $divisiones = $pdo->prepare("
     SELECT d.id, d.nombre, a.nombre AS asignacion, d.orientacion_id, d.asignacion_id
@@ -155,11 +160,13 @@ $hastaEsc = h($hasta);
 
     <?php if ($tab === 'usuarios'): ?>
         <button class="btn-primario" onclick="abrirModalCrear()">➕ Crear usuario</button>
+        <button class="btn-secundario" id="btnPasarInst" onclick="abrirModalPasarInst()" disabled>🏛️ Pasar a otra institución (<span id="contPasarInst">0</span>)</button>
 
         <div class="panel-vidrio">
             <table class="tabla-alumnos">
                 <thead>
                     <tr>
+                        <th style="width:2.5rem;"></th>
                         <th>Apellido, Nombre</th>
                         <th>DNI</th>
                         <th>Email</th>
@@ -172,13 +179,18 @@ $hastaEsc = h($hasta);
                 <tbody>
                     <?php foreach ($usuarios as $u): ?>
                         <tr>
-                            <td><?= h($u['apellido'] . ', ' . $u['nombre']) ?></td>
+                            <td><?php if ($u['rol'] === 'alumno'): ?><input type="checkbox" class="chk-pasar-inst" value="<?= (int)$u['id'] ?>" onchange="contarPasarInst()"><?php endif; ?></td>
+                            <td><?= h(nombreCompleto($u)) ?></td>
                             <td><?= h($u['dni']) ?></td>
                             <td><?= h($u['email'] ?? '—') ?></td>
                             <td><?= h(ucfirst($u['rol'])) ?></td>
                             <td>
                                 <?php if ($u['rol'] === 'alumno'): ?>
-                                    <?= $u['asignacion_nombre'] ? h($u['asignacion_nombre'] . ' ' . $u['division_nombre']) : '<em style="color:#a5c3e8;">Sin división</em>' ?>
+                                    <?php if (empty($u['cursadas'])): ?>
+                                        <em style="color:#a5c3e8;">Sin división</em>
+                                    <?php else: foreach ($u['cursadas'] as $cu): ?>
+                                        <div><?= h($cu['nombre']) ?><?php if ($cu['solo']): ?> <small style="color:#7dd3fc;">· parcial (<?= count($cu['materias']) ?>)</small><?php endif; ?></div>
+                                    <?php endforeach; endif; ?>
                                 <?php elseif ($u['rol'] === 'docente'): ?>
                                     <?php $asigs = $asignacionesDocentes[$u['id']] ?? []; ?>
                                     <?= empty($asigs) ? '<em style="color:#a5c3e8;">Sin asignaciones</em>' : count($asigs) . ' asignación(es)' ?>
@@ -188,7 +200,7 @@ $hastaEsc = h($hasta);
                             </td>
                             <td><?= $u['activo'] ? '✅' : '❌' ?></td>
                             <td>
-                                <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
+                                <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, 0)'>✏️ Editar</button>
                                 <?php if ($u['id'] != $_SESSION['user_id']): ?>
                                     <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)">🗑️</button>
                                 <?php endif; ?>
@@ -218,6 +230,7 @@ $hastaEsc = h($hasta);
                             <option value="docente">Docente</option>
                             <option value="secretario">Secretario</option>
                             <option value="directivo">Directivo</option>
+                            <option value="familiar">Padre / Tutor</option>
                         </select>
                     </label>
                     <div id="seccionAsignacion" style="display:none;">
@@ -229,7 +242,7 @@ $hastaEsc = h($hasta);
                         <hr style="border-color: var(--borde-vidrio); margin: 1rem 0;">
                         <h4 style="margin-bottom: 0.5rem; color: #7dd3fc;">Familiar / Tutor</h4>
                         <label>DNI del familiar <input type="text" name="dni_familiar" id="dniFamiliar" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12"></label>
-                        <label>Nombre del familiar (opcional) <input type="text" name="nombre_familiar" id="nombreFamiliar"></label>
+                        <p style="font-size:0.8rem; color:#a5c3e8; margin:0.25rem 0 0;">Solo se pide el DNI: el familiar completará sus datos en su primer ingreso.</p>
                     </div>
                     <div id="campoPasswordInfo">
                         <p class="alerta info" style="font-size:0.85rem; margin-top:1rem;">El usuario se creará con la contraseña temporal <strong>Temporal123</strong>.</p>
@@ -250,11 +263,62 @@ $hastaEsc = h($hasta);
             </div>
         </div>
 
+        <div class="modal-fondo oculto" id="modalPasarInst">
+            <div class="modal-caja" style="min-width: 420px; max-width: 90vw;">
+                <h3>🏛️ Pasar alumnos a otra institución</h3>
+                <p style="color:#cfe2ff; font-size:0.85rem; margin-bottom:0.75rem;">
+                    Se pasarán <strong><span id="cantPasarInst">0</span></strong> alumno(s) sin necesidad de aprobación. Perderán su división actual y sus familiares se mueven con ellos si no tienen otros alumnos acá.
+                </p>
+                <label>Institución destino
+                    <select id="destinoInst">
+                        <option value="">— Elegí la institución —</option>
+                        <?php foreach ($otrasInstituciones as $oi): ?>
+                            <option value="<?= (int)$oi['id'] ?>"><?= h($oi['nombre']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <div class="modal-acciones">
+                    <button type="button" class="btn-secundario" onclick="cerrarModal('modalPasarInst')">Cancelar</button>
+                    <button type="button" class="btn-primario" id="btnConfirmarPasarInst" onclick="confirmarPasarInst()">Confirmar</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        function contarPasarInst() {
+            const n = document.querySelectorAll('.chk-pasar-inst:checked').length;
+            document.getElementById('contPasarInst').textContent = n;
+            document.getElementById('btnPasarInst').disabled = n === 0;
+        }
+        function abrirModalPasarInst() {
+            document.getElementById('cantPasarInst').textContent = document.querySelectorAll('.chk-pasar-inst:checked').length;
+            document.getElementById('modalPasarInst').classList.remove('oculto');
+        }
+        async function confirmarPasarInst() {
+            const destino = document.getElementById('destinoInst').value;
+            if (!destino) { mostrarToast('Elegí la institución destino', 'error'); return; }
+            const fd = new FormData();
+            fd.append('destino_id', destino);
+            document.querySelectorAll('.chk-pasar-inst:checked').forEach(c => fd.append('alumnos_ids[]', c.value));
+            const btn = document.getElementById('btnConfirmarPasarInst');
+            btn.disabled = true;
+            try {
+                const r = await fetchConSesion('/plataforma/api/institucion_ajax.php?id=<?= $institucionId ?>&action=transferir_institucion', { method: 'POST', body: fd });
+                const d = await r.json();
+                if (d.ok) { mostrarToast(d.procesados + ' alumno(s) transferido(s)', 'ok'); setTimeout(() => location.reload(), 700); }
+                else { mostrarToast(d.mensaje || 'Error', 'error'); btn.disabled = false; }
+            } catch (err) {
+                if (err.message === 'Sesión expirada') return;
+                mostrarToast('Error de red: ' + err.message, 'error'); btn.disabled = false;
+            }
+        }
+        </script>
         <script>
         window.INST_USER_API = '/plataforma/api/institucion_ajax.php?id=<?= $institucionId ?>';
         window.DIVISIONES = <?= jsonJs($divisiones) ?>;
         window.MATERIAS = <?= jsonJs($materias) ?>;
         </script>
+        <script src="/assets/js/cursadas-alumno.js"></script>
         <script src="/assets/js/institucion_usuarios.js"></script>
 
     <?php elseif ($tab === 'importacion'): ?>

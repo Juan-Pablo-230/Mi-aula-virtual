@@ -97,7 +97,7 @@ if ($esAlumno || $esFamiliar) {
                                 $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
                                 $stmt->execute([$aid]);
                                 $hijo = $stmt->fetch(); ?>
-                                <option value="<?= (int)$aid ?>" <?= $aid === $alumnoSel ? 'selected' : '' ?>><?= h($hijo['apellido'] . ', ' . $hijo['nombre']) ?></option>
+                                <option value="<?= (int)$aid ?>" <?= $aid === $alumnoSel ? 'selected' : '' ?>><?= h(nombreCompleto($hijo)) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </label>
@@ -210,6 +210,7 @@ if ($materiaId || $modoDia) {
         JOIN asignaciones asg ON asg.id = dv.asignacion_id
         LEFT JOIN alumno_materia_exclusion ame ON ame.alumno_id = u.id AND ame.materia_id = adoc.materia_id
         WHERE adoc.materia_id = ? AND u.rol = 'alumno' AND u.activo = 1 AND ame.alumno_id IS NULL
+        " . AcademicModel::sqlCursaMateria('u.id', 'h.division_id', 'adoc.materia_id') . "
         " . AsistenciaReglas::sqlSoloPorMateria($pdo, 'asg') . "
         ORDER BY u.apellido, u.nombre
     ");
@@ -363,7 +364,7 @@ include __DIR__ . '/views/menu.php';
                             <?php endif; ?>
                         </div>
                         <?php if ($esDirectivoVista): ?>
-                            <button type="button" class="btn-mini" style="margin-top:0.35rem; font-size:0.7rem;" title="<?= isset($topesPorAlumno[$aid]) ? 'Tope personal' : 'Tope general' ?> — cambiar tope de este alumno" onclick="event.stopPropagation(); cambiarTope(<?= $aid ?>, <?= (int)$tope ?>, <?= h(jsonJs($a['apellido'] . ', ' . $a['nombre'])) ?>)">✏️ Tope<?= isset($topesPorAlumno[$aid]) ? ' (personal)' : '' ?></button>
+                            <button type="button" class="btn-mini" style="margin-top:0.35rem; font-size:0.7rem;" title="<?= isset($topesPorAlumno[$aid]) ? 'Tope personal' : 'Tope general' ?> — cambiar tope de este alumno" onclick="event.stopPropagation(); cambiarTope(<?= $aid ?>, <?= (int)$tope ?>, <?= h(jsonJs(nombreCompleto($a))) ?>)">✏️ Tope<?= isset($topesPorAlumno[$aid]) ? ' (personal)' : '' ?></button>
                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>

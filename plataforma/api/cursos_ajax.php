@@ -32,6 +32,7 @@ function guardarAsignacionesMateria(PDO $pdo, int $materiaId, array $asignacione
 
     $ins = $pdo->prepare("INSERT IGNORE INTO materias_asignaciones (materia_id, asignacion_id) VALUES (?, ?)");
     foreach ($validos as $aid) $ins->execute([$materiaId, (int)$aid]);
+    AcademicModel::sumarMateriaNuevaAParciales($pdo, $materiaId);
 }
 
 try {

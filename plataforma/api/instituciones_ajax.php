@@ -3,6 +3,30 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../models/UserModel.php';
+require_once __DIR__ . '/../core/Geo.php';
+
+/**
+ * Valida país/localidad (contra las APIs), calle y altura. Devuelve los campos listos para guardar.
+ */
+function leerDomicilio(): array {
+    $paisVal = trim($_POST['pais'] ?? '');
+    $loc     = trim($_POST['localidad'] ?? '');
+    $calle   = trim($_POST['calle'] ?? '');
+    $altura  = trim($_POST['altura'] ?? '');
+    if ($paisVal === '' || $loc === '' || $calle === '' || $altura === '') {
+        jsonResponse(['ok' => false, 'mensaje' => 'Completá país, localidad, calle y altura'], 400);
+    }
+    $pais = Geo::buscarPais($paisVal);
+    if (!$pais) jsonResponse(['ok' => false, 'mensaje' => 'País inválido'], 400);
+    $locs = Geo::localidades($paisVal);
+    if ($locs !== null && !in_array($loc, $locs, true)) jsonResponse(['ok' => false, 'mensaje' => 'Localidad inválida para el país elegido'], 400);
+    if (mb_strlen($calle) > 150) jsonResponse(['ok' => false, 'mensaje' => 'La calle es demasiado larga'], 400);
+    if (!preg_match('/^[0-9]{1,6}$/', $altura)) jsonResponse(['ok' => false, 'mensaje' => 'La altura debe ser numérica (hasta 6 dígitos)'], 400);
+    return [
+        'pais' => $pais['nombre'], 'localidad' => $loc, 'calle' => $calle, 'altura' => (int)$altura,
+        'direccion' => $calle . ' ' . (int)$altura . ', ' . $loc . ', ' . $pais['nombre'],
+    ];
+}
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(['madre']);
@@ -14,7 +38,6 @@ try {
 
         case 'crear_con_duenio':
             $nombre    = trim($_POST['nombre'] ?? '');
-            $direccion = trim($_POST['direccion'] ?? '');
             $telefono  = trim($_POST['telefono'] ?? '');
             $emailInst = trim($_POST['email'] ?? '');
             $duenioDni = trim($_POST['duenio_dni'] ?? '');
@@ -30,12 +53,14 @@ try {
                 jsonResponse(['ok' => false, 'mensaje' => 'DNI del dueño inválido'], 400);
             }
 
+            $dom = leerDomicilio();
+
             $pdo->beginTransaction();
 
-            $pdo->prepare("INSERT INTO instituciones (nombre, direccion, telefono, email) VALUES (?, ?, ?, ?)")
+            $pdo->prepare("INSERT INTO instituciones (nombre, direccion, pais, localidad, calle, altura, telefono, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
                 ->execute([
                     $nombre,
-                    $direccion !== '' ? $direccion : null,
+                    $dom['direccion'], $dom['pais'], $dom['localidad'], $dom['calle'], $dom['altura'],
                     $telefono !== '' ? $telefono : null,
                     $emailInst !== '' ? $emailInst : null,
                 ]);

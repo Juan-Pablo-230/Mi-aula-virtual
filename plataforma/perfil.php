@@ -10,7 +10,7 @@ $user = Auth::currentUser($pdo);
 <main class="contenido-principal">
     <h1>Mi perfil</h1>
     <div class="panel-vidrio">
-        <p><strong>Apellido y Nombre:</strong> <?= h($user['apellido'] . ', ' . $user['nombre']) ?></p>
+        <p><strong>Apellido y Nombre:</strong> <?= h(nombreCompleto($user)) ?></p>
         <p><strong>Email:</strong> <?= h($user['email']) ?></p>
         <p><strong>Rol:</strong> <?= h(ucfirst($user['rol'])) ?></p>
         <button class="btn-primario" onclick="abrirModalPerfil()">Editar perfil</button>

@@ -110,7 +110,7 @@ function nombreAutor(PDO $pdo, int $id, array &$cache): string {
     $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
     $stmt->execute([$id]);
     $u = $stmt->fetch();
-    $cache[$id] = $u ? ($u['apellido'] . ', ' . $u['nombre']) : 'Desconocido';
+    $cache[$id] = $u ? (nombreCompleto($u)) : 'Desconocido';
     return $cache[$id];
 }
 

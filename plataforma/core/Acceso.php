@@ -111,6 +111,7 @@ class Acceso {
                 SELECT 1 FROM asignaciones_docente ad
                 JOIN alumnos_division_historial h ON h.division_id = ad.division_id AND h.alumno_id = ? AND h.activo = 1
                 WHERE ad.docente_id = ? AND ad.materia_id = ?
+                " . AcademicModel::sqlCursaMateria('h.alumno_id', 'h.division_id', 'ad.materia_id') . "
                 LIMIT 1
             ", [$alumnoId, $u['id'], $materiaId]);
         }
@@ -195,7 +196,8 @@ class Acceso {
             $phA = implode(',', array_fill(0, count($alumnos), '?'));
             $phD = implode(',', array_fill(0, count($divs), '?'));
             return (bool)self::valor($pdo,
-                "SELECT 1 FROM alumnos_division_historial WHERE alumno_id IN ($phA) AND division_id IN ($phD) LIMIT 1",
+                "SELECT 1 FROM alumnos_division_historial h WHERE h.alumno_id IN ($phA) AND h.division_id IN ($phD) "
+                    . AcademicModel::sqlCursaMateria('h.alumno_id', 'h.division_id', (string)$materiaId) . " LIMIT 1",
                 array_merge($alumnos, $divs));
         }
         return false;

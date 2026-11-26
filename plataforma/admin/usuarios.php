@@ -38,18 +38,73 @@ $divisiones->execute([$miInstitucionId]);
 $divisiones = $divisiones->fetchAll();
 
 $stmt = $pdo->prepare("
-    SELECT u.*, d.id AS division_id, d.nombre AS division_nombre, a.nombre AS asignacion_nombre,
-           h.año_lectivo AS año_actual, h.estado AS estado_historial
+    SELECT u.*
     FROM usuarios u
-    LEFT JOIN alumnos_division ad ON ad.alumno_id = u.id
-    LEFT JOIN divisiones d ON d.id = ad.division_id
-    LEFT JOIN asignaciones a ON a.id = d.asignacion_id
-    LEFT JOIN alumnos_division_historial h ON h.alumno_id = u.id AND h.activo = 1
     WHERE u.institucion_id = ?
     ORDER BY u.rol, u.apellido, u.nombre
 ");
 $stmt->execute([$miInstitucionId]);
 $usuarios = $stmt->fetchAll();
+// Un alumno puede tener varias cursadas a la vez en la institución
+$cursadasPorAlumno = AcademicModel::cursadasPorAlumno($pdo, $miInstitucionId);
+foreach ($usuarios as &$uCur) $uCur['cursadas'] = $cursadasPorAlumno[(int)$uCur['id']] ?? [];
+unset($uCur);
+
+$tab = $_GET['tab'] ?? 'personal';
+if (!in_array($tab, ['personal', 'alumnos', 'familiares', 'solicitudes'], true)) $tab = 'personal';
+$rolesPersonal = ['docente', 'secretario', 'directivo'];
+$cantTab = ['personal' => 0, 'alumnos' => 0, 'familiares' => 0];
+$lista = [];
+foreach ($usuarios as $u) {
+    $t = $u['rol'] === 'alumno' ? 'alumnos' : ($u['rol'] === 'familiar' ? 'familiares' : 'personal');
+    $cantTab[$t]++;
+    if ($t === $tab) $lista[] = $u;
+}
+
+// Alumnos a cargo de cada familiar
+$alumnosDeFamiliar = [];
+if ($tab === 'familiares') {
+    $stF = $pdo->prepare("
+        SELECT fa.familiar_id, al.apellido, al.nombre
+        FROM familiares_alumnos fa
+        JOIN usuarios f ON f.id = fa.familiar_id
+        JOIN usuarios al ON al.id = fa.alumno_id
+        WHERE f.institucion_id = ?
+        ORDER BY al.apellido, al.nombre
+    ");
+    $stF->execute([$miInstitucionId]);
+    foreach ($stF as $r) $alumnosDeFamiliar[(int)$r['familiar_id']][] = nombreCompleto($r);
+}
+
+// Solicitudes de transferencia
+$solRecibidas = $solEnviadas = [];
+$pendientesRecibidas = 0;
+$solicitudesError = false;
+try {
+    $stS = $pdo->prepare("
+        SELECT s.*, al.apellido, al.nombre, al.dni, io.nombre AS inst_origen, idd.nombre AS inst_destino,
+               CONCAT_WS(', ', sp.apellido, sp.nombre) AS solicitante
+        FROM solicitudes_transferencia s
+        JOIN usuarios al ON al.id = s.alumno_id
+        JOIN instituciones io ON io.id = s.institucion_origen_id
+        JOIN instituciones idd ON idd.id = s.institucion_destino_id
+        LEFT JOIN usuarios sp ON sp.id = s.solicitada_por
+        WHERE s.institucion_origen_id = ? OR s.institucion_destino_id = ?
+        ORDER BY (s.estado = 'pendiente') DESC, s.creada_en DESC
+        LIMIT 200
+    ");
+    $stS->execute([$miInstitucionId, $miInstitucionId]);
+    foreach ($stS as $r) {
+        if ((int)$r['institucion_origen_id'] === $miInstitucionId) {
+            $solRecibidas[] = $r;
+            if ($r['estado'] === 'pendiente') $pendientesRecibidas++;
+        } else {
+            $solEnviadas[] = $r;
+        }
+    }
+} catch (Exception $e) {
+    $solicitudesError = true; // falta ejecutar sql/migracion_solicitudes_transferencia.sql
+}
 
 $stmtMaterias = $pdo->prepare("
     SELECT m.id, m.nombre, m.orientacion_id
@@ -76,8 +131,9 @@ $asignacionesDocentes = [];
 $stmt = $pdo->prepare("
     SELECT ad.docente_id, ad.materia_id, ad.division_id
     FROM asignaciones_docente ad
-    JOIN usuarios u ON u.id = ad.docente_id
-    WHERE u.institucion_id = ?
+    JOIN divisiones d ON d.id = ad.division_id
+    JOIN asignaciones a ON a.id = d.asignacion_id
+    WHERE a.institucion_id = ?
 ");
 $stmt->execute([$miInstitucionId]);
 foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
@@ -89,73 +145,174 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
     <h1>👥 Administrar Usuarios — <?= h($miInstitucionNombre) ?></h1>
     <?php include __DIR__ . '/../views/admin_nav.php'; ?>
 
+    <nav class="admin-nav sub-tabs" style="margin-bottom:1rem;">
+        <a href="?tab=personal" class="admin-nav-item <?= $tab === 'personal' ? 'activo' : '' ?>">🏫 Personal de la institución (<?= $cantTab['personal'] ?>)</a>
+        <a href="?tab=alumnos" class="admin-nav-item <?= $tab === 'alumnos' ? 'activo' : '' ?>">🎓 Alumnos (<?= $cantTab['alumnos'] ?>)</a>
+        <a href="?tab=familiares" class="admin-nav-item <?= $tab === 'familiares' ? 'activo' : '' ?>">👪 Padres / Tutores (<?= $cantTab['familiares'] ?>)</a>
+        <a href="?tab=solicitudes" class="admin-nav-item <?= $tab === 'solicitudes' ? 'activo' : '' ?>">🔄 Solicitudes de transferencia<?= $pendientesRecibidas ? ' <span class="badge-pendiente">' . $pendientesRecibidas . '</span>' : '' ?></a>
+    </nav>
+
+<?php if ($tab !== 'solicitudes'): ?>
     <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
-        <button class="btn-primario" onclick="abrirModalCrear()">➕ Crear usuario</button>
+        <button class="btn-primario" onclick="abrirModalCrear('<?= $tab === 'alumnos' ? 'alumno' : ($tab === 'familiares' ? 'familiar' : '') ?>')">➕ Crear <?= $tab === 'alumnos' ? 'alumno' : ($tab === 'familiares' ? 'padre / tutor' : 'personal') ?></button>
+        <?php if ($tab === 'alumnos'): ?>
         <button class="btn-secundario" id="btnTransferir" onclick="abrirModalTransferir()" disabled>
             🔄 Transferir seleccionados (<span id="contadorSeleccionados">0</span>)
         </button>
+        <?php endif; ?>
     </div>
 
     <div class="panel-vidrio">
         <div style="margin-bottom:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+            <?php if ($tab === 'alumnos'): ?>
             <label class="label-checkbox" style="margin:0;">
                 <input type="checkbox" id="chkTodosAlumnos" onchange="marcarTodosAlumnos(this.checked)">
                 <span>Seleccionar todos los alumnos</span>
             </label>
-            <input type="text" id="buscarAlumno" placeholder="🔍 Buscar alumno..." oninput="filtrarAlumnos()" style="flex:1; min-width:10rem; padding:0.4rem 0.6rem; border-radius:0.5rem; border:0.0625rem solid var(--borde-vidrio); background:rgba(255,255,255,0.06); color:#fff; font-size:0.85rem;">
+            <?php endif; ?>
+            <input type="text" id="buscarAlumno" placeholder="🔍 Buscar..." oninput="filtrarAlumnos()" style="flex:1; min-width:10rem; padding:0.4rem 0.6rem; border-radius:0.5rem; border:0.0625rem solid var(--borde-vidrio); background:rgba(255,255,255,0.06); color:#fff; font-size:0.85rem;">
         </div>
 
         <table class="tabla-alumnos" id="tablaUsuarios">
             <thead>
                 <tr>
-                    <th style="width:2.5rem;"></th>
+                    <?php if ($tab === 'alumnos'): ?><th style="width:2.5rem;"></th><?php endif; ?>
                     <th>Apellido, Nombre</th>
                     <th>DNI</th>
                     <th>Email</th>
                     <th>Rol</th>
-                    <th>Asignación</th>
+                    <th><?= $tab === 'familiares' ? 'Alumnos a cargo' : 'Asignación' ?></th>
                     <th>Estado</th>
                     <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($usuarios as $u): ?>
+                <?php foreach ($lista as $u): ?>
                     <tr data-rol="<?= h($u['rol']) ?>" data-nombre="<?= h(mb_strtolower($u['apellido'] . ' ' . $u['nombre'])) ?>">
-                        <td>
+                        <?php if ($tab === 'alumnos'): ?><td>
                             <?php if ($u['rol'] === 'alumno'): ?>
                                 <input type="checkbox" class="chk-alumno" value="<?= (int)$u['id'] ?>" onchange="actualizarContador()">
                             <?php endif; ?>
-                        </td>
-                        <td><?= h($u['apellido'] . ', ' . $u['nombre']) ?></td>
+                        </td><?php endif; ?>
+                        <td><?= h(nombreCompleto($u)) ?></td>
                         <td><?= h($u['dni']) ?></td>
                         <td><?= h($u['email'] ?? '—') ?></td>
                         <td><?= h(ucfirst($u['rol'])) ?></td>
                         <td>
                             <?php if ($u['rol'] === 'alumno'): ?>
-                                <?= $u['asignacion_nombre'] ? h($u['asignacion_nombre'] . ' ' . $u['division_nombre']) : '<em style="color:#a5c3e8;">Sin división</em>' ?>
-                                <?php if ($u['año_actual']): ?>
-                                    <br><small style="color:#a5c3e8;">Año lectivo: <?= (int)$u['año_actual'] ?></small>
-                                <?php endif; ?>
+                                <?php if (empty($u['cursadas'])): ?>
+                                    <em style="color:#a5c3e8;">Sin división</em>
+                                <?php else: foreach ($u['cursadas'] as $cu): ?>
+                                    <div><?= h($cu['nombre']) ?>
+                                        <?php if ($cu['solo']): ?><small style="color:#7dd3fc;">· parcial (<?= count($cu['materias']) ?> materia<?= count($cu['materias']) === 1 ? '' : 's' ?>)</small><?php endif; ?>
+                                        <?php if ($cu['anio']): ?><small style="color:#a5c3e8;">· <?= (int)$cu['anio'] ?></small><?php endif; ?>
+                                    </div>
+                                <?php endforeach; endif; ?>
                             <?php elseif ($u['rol'] === 'docente'): ?>
                                 <?php $asigs = $asignacionesDocentes[$u['id']] ?? []; ?>
                                 <?= empty($asigs) ? '<em style="color:#a5c3e8;">Sin asignaciones</em>' : count($asigs) . ' asignación(es)' ?>
+                            <?php elseif ($u['rol'] === 'familiar'): ?>
+                                <?php $acargo = $alumnosDeFamiliar[(int)$u['id']] ?? []; ?>
+                                <?= $acargo ? h(implode(' · ', $acargo)) : '<em style="color:#a5c3e8;">Sin alumnos vinculados</em>' ?>
                             <?php else: ?>
                                 <em style="color:#a5c3e8;">—</em>
                             <?php endif; ?>
                         </td>
                         <td><?= $u['activo'] ? '✅' : '❌' ?></td>
                         <td>
-                            <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, <?= (int)($u['division_id'] ?? 0) ?>)'>✏️ Editar</button>
+                            <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, 0)'>✏️ Editar</button>
                             <?php if ($u['id'] != $_SESSION['user_id']): ?>
-                                <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)">🗑️</button>
+                                <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)" title="Eliminar">🗑️</button>
                             <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php if (!$lista): ?><p style="color:#a5c3e8; margin-top:0.75rem;">No hay usuarios en esta sección.</p><?php endif; ?>
     </div>
+
+<?php else: ?>
+    <?php if ($solicitudesError): ?>
+        <div class="alerta danger">Falta crear la tabla de solicitudes: ejecutá <code>sql/migracion_solicitudes_transferencia.sql</code>.</div>
+    <?php endif; ?>
+    <?php
+    $etiquetaEstado = ['pendiente' => '⏳ Pendiente', 'aprobada' => '✅ Aprobada', 'denegada' => '❌ Denegada', 'cancelada' => '🚫 Cancelada'];
+    ?>
+    <div class="panel-vidrio" style="margin-bottom:1rem;">
+        <h3>📥 Recibidas — alumnos de tu institución que otra institución quiere incorporar</h3>
+        <p style="color:#a5c3e8; font-size:0.85rem;">Si aprobás, el alumno pasa a la otra institución y deja de verse en la tuya.</p>
+        <?php if (!$solRecibidas): ?>
+            <p style="color:#a5c3e8;">No recibiste solicitudes.</p>
+        <?php else: ?>
+        <table class="tabla-alumnos">
+            <thead><tr><th>Alumno</th><th>DNI</th><th>Institución que lo solicita</th><th>Solicitó</th><th>Fecha</th><th>Nota</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($solRecibidas as $r): ?>
+                <tr>
+                    <td><?= h(nombreCompleto($r)) ?></td>
+                    <td><?= h($r['dni']) ?></td>
+                    <td><?= h($r['inst_destino']) ?></td>
+                    <td><?= h($r['solicitante'] ?? '—') ?></td>
+                    <td><?= h(date('d/m/Y', strtotime($r['creada_en']))) ?></td>
+                    <td><?= h($r['nota'] ?? '—') ?></td>
+                    <td><?= h($etiquetaEstado[$r['estado']] ?? $r['estado']) ?></td>
+                    <td>
+                        <?php if ($r['estado'] === 'pendiente'): ?>
+                            <button type="button" class="btn-primario" onclick="resolverSolicitud(<?= (int)$r['id'] ?>, 'aprobar')">Aprobar</button>
+                            <button type="button" class="btn-peligro-sm" onclick="resolverSolicitud(<?= (int)$r['id'] ?>, 'denegar')">Denegar</button>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+
+    <div class="panel-vidrio">
+        <h3>📤 Enviadas — alumnos de otras instituciones que querés incorporar</h3>
+        <p style="color:#a5c3e8; font-size:0.85rem;">Para pedir una transferencia, intentá crear al alumno con su DNI: si ya está en otra institución, el sistema te ofrece enviar la solicitud.</p>
+        <?php if (!$solEnviadas): ?>
+            <p style="color:#a5c3e8;">No enviaste solicitudes.</p>
+        <?php else: ?>
+        <table class="tabla-alumnos">
+            <thead><tr><th>Alumno</th><th>DNI</th><th>Institución actual</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($solEnviadas as $r): ?>
+                <tr>
+                    <td><?= h(nombreCompleto($r)) ?></td>
+                    <td><?= h($r['dni']) ?></td>
+                    <td><?= h($r['inst_origen']) ?></td>
+                    <td><?= h(date('d/m/Y', strtotime($r['creada_en']))) ?></td>
+                    <td><?= h($etiquetaEstado[$r['estado']] ?? $r['estado']) ?></td>
+                    <td><?php if ($r['estado'] === 'pendiente'): ?>
+                        <button type="button" class="btn-secundario" onclick="cancelarSolicitud(<?= (int)$r['id'] ?>)">Cancelar solicitud</button>
+                    <?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+
+<?php endif; ?>
 </main>
+
+<div class="modal-fondo oculto" id="modalSolicitud">
+    <div class="modal-caja" style="min-width: 400px; max-width: 90vw;">
+        <h3>🔄 Alumno registrado en otra institución</h3>
+        <p id="solTexto" style="color:#cfe2ff; margin-bottom:0.75rem;"></p>
+        <p style="color:#cfe2ff; font-size:0.9rem; margin-bottom:0.5rem;">Podés enviar una solicitud de transferencia: la otra institución la verá en su sección de Usuarios y decidirá si la aprueba o la deniega.</p>
+        <label id="solNotaLabel">Nota para la otra institución (opcional)
+            <textarea id="solNota" maxlength="300" rows="3" style="width:100%;"></textarea>
+        </label>
+        <div class="modal-acciones">
+            <button type="button" class="btn-secundario" onclick="cerrarModal('modalSolicitud')">Cancelar</button>
+            <button type="button" class="btn-primario" id="btnEnviarSolicitud" onclick="enviarSolicitud()">Continuar</button>
+        </div>
+    </div>
+</div>
 
 <div class="modal-fondo oculto" id="modalUser">
     <div class="modal-caja" style="min-width: 500px; max-width: 90vw;">
@@ -175,6 +332,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
                     <option value="docente">Docente</option>
                     <option value="secretario">Secretario</option>
                     <option value="directivo">Directivo</option>
+                    <option value="familiar">Padre / Tutor</option>
                 </select>
             </label>
             <div id="seccionAsignacion" style="display:none;">
@@ -186,7 +344,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
                 <hr style="border-color: var(--borde-vidrio); margin: 1rem 0;">
                 <h4 style="margin-bottom: 0.5rem; color: #7dd3fc;">Familiar / Tutor</h4>
                 <label>DNI del familiar <input type="text" name="dni_familiar" id="dniFamiliar" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12"></label>
-                <label>Nombre del familiar (opcional) <input type="text" name="nombre_familiar" id="nombreFamiliar"></label>
+                <p style="font-size:0.8rem; color:#a5c3e8; margin:0.25rem 0 0;">Solo se pide el DNI: el familiar completará sus datos en su primer ingreso.</p>
             </div>
             <div id="campoPasswordInfo">
                 <p class="alerta info" style="font-size:0.85rem; margin-top:1rem;">El usuario se creará con la contraseña temporal <strong>Temporal123</strong>.</p>
@@ -255,6 +413,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
     </div>
 </div>
 
+<script src="/assets/js/cursadas-alumno.js"></script>
 <script>
 const API = '/plataforma/api/usuarios_ajax.php';
 const DIVISIONES = <?= jsonJs($divisiones) ?>;
@@ -262,6 +421,7 @@ const MATERIAS = <?= jsonJs($materias) ?>;
 
 let asignacionesActuales = [];
 let divisionActual = 0;
+let cursadasActuales = [];
 
 function materiasCompatiblesConDivision(divisionId) {
     const div = DIVISIONES.find(d => d.id == divisionId);
@@ -287,8 +447,10 @@ function marcarTodosAlumnos(marcar) {
 
 function actualizarContador() {
     const seleccionados = document.querySelectorAll('.chk-alumno:checked').length;
-    document.getElementById('contadorSeleccionados').textContent = seleccionados;
-    document.getElementById('btnTransferir').disabled = seleccionados === 0;
+    const cont = document.getElementById('contadorSeleccionados');
+    const btnT = document.getElementById('btnTransferir');
+    if (cont) cont.textContent = seleccionados;
+    if (btnT) btnT.disabled = seleccionados === 0;
 }
 
 function filtrarAlumnos() {
@@ -365,13 +527,8 @@ function actualizarAsignacionForm() {
 
     if (rol === 'alumno') {
         seccion.style.display = 'block';
-        let html = `<label>División <select name="division_id" id="selectDivisionAlumno"><option value="0">— Sin división —</option>`;
-        DIVISIONES.forEach(d => {
-            const sel = (d.id == divisionActual) ? 'selected' : '';
-            html += `<option value="${d.id}" ${sel}>${d.asignacion} ${d.nombre}</option>`;
-        });
-        html += `</select></label>`;
-        cont.innerHTML = html;
+        cont.innerHTML = '<div id="cursadasAlumno"></div>';
+        CursadasEditor.montar(document.getElementById('cursadasAlumno'), { divisiones: DIVISIONES, materiasDe: materiasCompatiblesConDivision, cursadas: cursadasActuales });
     } else if (rol === 'docente') {
         seccion.style.display = 'block';
         const asignadas = new Set((asignacionesActuales || []).map(a => `${a.materia_id}-${a.division_id}`));
@@ -405,10 +562,25 @@ function actualizarAsignacionForm() {
     }
 }
 
-function abrirModalCrear() {
+// El rol es de solo lectura: fijo según la pestaña al crear, y no se puede cambiar al editar.
+// Solo en "Personal" se elige entre los roles del personal.
+function configurarRolSelect(rol, esEdicion) {
+    const sel = document.getElementById('userRol');
+    const libre = !esEdicion && rol === '';
+    Array.from(sel.options).forEach(o => {
+        const esPersonal = ['docente', 'secretario', 'directivo'].includes(o.value);
+        o.hidden = o.disabled = libre && o.value !== '' && !esPersonal;
+    });
+    sel.value = rol;
+    sel.disabled = !libre;
+    sel.title = libre ? '' : 'El rol no se puede cambiar';
+}
+
+function abrirModalCrear(rolInicial) {
     document.getElementById('modalUserTitulo').textContent = 'Crear usuario';
     document.getElementById('formUser').reset();
     document.getElementById('userId').value = '';
+    document.getElementById('userNombre').required = true;
     document.getElementById('campoPasswordInfo').style.display = 'block';
     document.getElementById('campoActivo').style.display = 'none';
     document.getElementById('campoEmail').style.display = 'none';
@@ -418,6 +590,9 @@ function abrirModalCrear() {
     document.getElementById('contenidoAsignacion').innerHTML = '';
     asignacionesActuales = [];
     divisionActual = 0;
+    cursadasActuales = [];
+    configurarRolSelect(rolInicial || '', false);
+    if (rolInicial) actualizarAsignacionForm();
     document.getElementById('modalUser').classList.remove('oculto');
 }
 
@@ -428,7 +603,8 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('userApellido').value = u.apellido;
     document.getElementById('userDni').value = u.dni;
     document.getElementById('userEmail').value = u.email || '';
-    document.getElementById('userRol').value = u.rol;
+    configurarRolSelect(u.rol, true);
+    document.getElementById('userNombre').required = u.rol !== 'familiar';
     document.getElementById('campoPasswordInfo').style.display = 'none';
     document.getElementById('campoActivo').style.display = 'block';
     document.getElementById('userActivo').value = u.activo;
@@ -436,6 +612,7 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('btnGuardarUser').textContent = 'Guardar cambios';
     asignacionesActuales = asigs || [];
     divisionActual = divId || 0;
+    cursadasActuales = u.cursadas || [];
     actualizarAsignacionForm();
     document.getElementById('modalUser').classList.remove('oculto');
 }
@@ -446,14 +623,13 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
     const isEdit = document.getElementById('userId').value !== '';
     const url = API + (isEdit ? '?action=editar' : '?action=crear');
     const fd = new FormData(form);
+    if (!fd.has('rol')) fd.set('rol', form.rol.value); // el select puede estar bloqueado (no se envía solo)
     const rol = form.rol.value;
     if (rol === 'alumno') {
         const selectDiv = form.querySelector('select[name="division_id"]');
         if (selectDiv) fd.set('division_id', selectDiv.value || '0');
         const dniFam = document.getElementById('dniFamiliar');
-        const nomFam = document.getElementById('nombreFamiliar');
         if (dniFam) fd.set('dni_familiar', dniFam.value.trim());
-        if (nomFam) fd.set('nombre_familiar', nomFam.value.trim());
     } else if (rol === 'docente') {
         fd.delete('asignaciones[]');
         form.querySelectorAll('input[name="asignaciones[]"]:checked').forEach(chk => fd.append('asignaciones[]', chk.value));
@@ -465,6 +641,17 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
         const r = await fetchConSesion(url, { method: 'POST', body: fd });
         const d = await r.json();
         if (d.ok) { mostrarToast(isEdit ? 'Usuario actualizado' : 'Usuario creado', 'ok'); setTimeout(() => location.reload(), 700); }
+        else if (d.codigo === 'otra_institucion') {
+            btn.disabled = false; btn.textContent = 'Crear';
+            solicitudActual = d;
+            document.getElementById('solTexto').innerHTML = '';
+            document.getElementById('solTexto').appendChild(document.createTextNode('El DNI ingresado corresponde a ' + d.alumno + ' (' + (d.rol_existente || 'alumno') + '), que ya está registrado en «' + d.institucion + '».'));
+            document.getElementById('solNota').value = '';
+            const bs = document.getElementById('btnEnviarSolicitud');
+            bs.disabled = !!d.solicitud_pendiente;
+            bs.textContent = d.solicitud_pendiente ? 'Ya enviaste una solicitud pendiente' : 'Enviar solicitud de transferencia';
+            document.getElementById('modalSolicitud').classList.remove('oculto');
+        }
         else { mostrarToast(d.mensaje || 'Error', 'error'); btn.disabled = false; btn.textContent = isEdit ? 'Guardar cambios' : 'Crear'; }
     } catch (err) {
         if (err.message === 'Sesión expirada') return;
@@ -481,6 +668,56 @@ async function eliminarUsuario(id) {
         const r = await fetchConSesion(API + '?action=eliminar', { method: 'POST', body: fd });
         const d = await r.json();
         if (d.ok) { mostrarToast('Usuario eliminado', 'ok'); setTimeout(() => location.reload(), 700); }
+        else mostrarToast(d.mensaje || 'Error', 'error');
+    } catch (err) {
+        if (err.message === 'Sesión expirada') return;
+        mostrarToast('Error de red: ' + err.message, 'error');
+    }
+}
+
+let solicitudActual = null;
+
+async function postAccion(accion, datos) {
+    const fd = new FormData();
+    Object.keys(datos).forEach(k => fd.append(k, datos[k]));
+    const r = await fetchConSesion(API + '?action=' + accion, { method: 'POST', body: fd });
+    return r.json();
+}
+
+async function enviarSolicitud() {
+    if (!solicitudActual) return;
+    const btn = document.getElementById('btnEnviarSolicitud');
+    btn.disabled = true;
+    try {
+        const d = await postAccion('solicitar_transferencia', { alumno_id: solicitudActual.alumno_id, nota: document.getElementById('solNota').value });
+        if (d.ok) { mostrarToast('Solicitud enviada', 'ok'); setTimeout(() => { location.href = '?tab=solicitudes'; }, 700); }
+        else { mostrarToast(d.mensaje || 'Error', 'error'); btn.disabled = false; }
+    } catch (err) {
+        if (err.message === 'Sesión expirada') return;
+        mostrarToast('Error de red: ' + err.message, 'error'); btn.disabled = false;
+    }
+}
+
+async function resolverSolicitud(id, decision) {
+    const texto = decision === 'aprobar'
+        ? '¿Aprobar la transferencia? El alumno saldrá de tu institución y perderá su división actual.'
+        : '¿Denegar la solicitud de transferencia?';
+    if (!confirm(texto)) return;
+    try {
+        const d = await postAccion('resolver_solicitud', { id: id, decision: decision });
+        if (d.ok) { mostrarToast(decision === 'aprobar' ? 'Transferencia aprobada' : 'Solicitud denegada', 'ok'); setTimeout(() => location.reload(), 700); }
+        else mostrarToast(d.mensaje || 'Error', 'error');
+    } catch (err) {
+        if (err.message === 'Sesión expirada') return;
+        mostrarToast('Error de red: ' + err.message, 'error');
+    }
+}
+
+async function cancelarSolicitud(id) {
+    if (!confirm('¿Cancelar esta solicitud?')) return;
+    try {
+        const d = await postAccion('cancelar_solicitud', { id: id });
+        if (d.ok) { mostrarToast('Solicitud cancelada', 'ok'); setTimeout(() => location.reload(), 700); }
         else mostrarToast(d.mensaje || 'Error', 'error');
     } catch (err) {
         if (err.message === 'Sesión expirada') return;

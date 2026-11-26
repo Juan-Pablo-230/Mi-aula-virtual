@@ -9,6 +9,7 @@ $user = Auth::currentUser($pdo);
 $userId = (int)$user['id'];
 $miInstitucionId = (int)($user['institucion_id'] ?? 0);
 
+
 $tz = new DateTimeZone('America/Argentina/Buenos_Aires');
 
 $chats = $mongoDB->selectCollection('mensajes')->aggregate([
@@ -128,7 +129,7 @@ $usuarios = $stmt->fetchAll();
                 <a href="?con_id=<?= (int)$otro['id'] ?>" class="contacto contacto-con-avatar <?= (int)$otro['id'] === $destinoId ? 'activo' : '' ?>">
                     <img class="contacto-avatar" src="<?= h(fotoPerfilUrl($otro['foto_perfil'] ?? null)) ?>" alt="">
                     <div class="contacto-texto">
-                        <strong><?= h($otro['apellido'] . ', ' . $otro['nombre']) ?></strong>
+                        <strong><?= h(nombreCompleto($otro)) ?></strong>
                         <small><?= h(mb_strimwidth($c['ultimo_mensaje'] ?? '', 0, 32, '…')) ?></small>
                     </div>
                     <?php if ($sinLeer > 0): ?>
@@ -139,7 +140,7 @@ $usuarios = $stmt->fetchAll();
         </aside>
         <section class="panel-vidrio chat">
             <?php if ($destino): ?>
-                <h3><?= h($destino['apellido'] . ', ' . $destino['nombre']) ?></h3>
+                <h3><?= h(nombreCompleto($destino)) ?></h3>
                 <?php if (!empty($errorMsg)): ?><div class="alerta danger"><?= h($errorMsg) ?></div><?php endif; ?>
                 <div class="chat-mensajes" id="chatMensajes">
                     <?php foreach ($msgs as $m):
@@ -206,7 +207,7 @@ $usuarios = $stmt->fetchAll();
                 <a href="?con_id=<?= (int)$u['id'] ?>" class="contacto contacto-con-avatar usuario-item" data-nombre="<?= h(mb_strtolower($u['nombre'] . ' ' . $u['apellido'])) ?>">
                     <img class="contacto-avatar" src="<?= h(fotoPerfilUrl($u['foto_perfil'] ?? null)) ?>" alt="">
                     <div class="contacto-texto">
-                        <strong><?= h($u['apellido'] . ', ' . $u['nombre']) ?></strong>
+                        <strong><?= h(nombreCompleto($u)) ?></strong>
                         <small><?= h(ucfirst($u['rol'])) ?></small>
                     </div>
                 </a>
