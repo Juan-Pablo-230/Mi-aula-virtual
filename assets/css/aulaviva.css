@@ -2390,3 +2390,13 @@ body.modal-abierto { overflow: hidden; }
 .opcion-institucion.actual { border-color: #7dd3fc; opacity: 0.7; cursor: default; }
 
 .badge-otra-inst { display:inline-block; margin-left:0.35rem; padding:0.1rem 0.5rem; border-radius:999px; background:rgba(125,211,252,0.18); border:0.0625rem solid rgba(125,211,252,0.5); color:#7dd3fc; font-size:0.72rem; white-space:nowrap; }
+
+/* Asistencia por día completo: botones de ¼ ½ ¾ 1 falta */
+.falta-botones { display: flex; gap: 0.25rem; justify-content: center; margin-top: 0.4rem; }
+.falta-btn {
+    min-width: 1.9rem; padding: 0.25rem 0.35rem; border-radius: 0.4rem; cursor: pointer; font: inherit; font-size: 0.85rem; color: #fff;
+    background: rgba(255,255,255,0.1); border: 0.0625rem solid var(--borde-vidrio);
+}
+.falta-btn:hover:not(:disabled) { background: rgba(255,255,255,0.22); }
+.falta-btn.activo { background: var(--celeste); border-color: var(--celeste); font-weight: 700; }
+.falta-btn:disabled { cursor: default; opacity: 0.7; }

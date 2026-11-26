@@ -26,7 +26,7 @@ $colTopesAlumno = $mongoDB->selectCollection('topes_alumno');
 // ============================================================
 // HELPER: calcular faltas y evaluar libre
 // ============================================================
-function evaluarLibre($mongoDB, int $alumnoId, int $materiaId, int $asigId = 0): array {
+function evaluarLibre(PDO $pdo, $mongoDB, int $alumnoId, int $materiaId, int $asigId = 0): array {
     $colAsistencia  = $mongoDB->selectCollection('asistencia');
     $colLibres      = $mongoDB->selectCollection('alumno_libre');
     $colReglas      = $mongoDB->selectCollection('reglas_asistencia');
@@ -45,11 +45,8 @@ function evaluarLibre($mongoDB, int $alumnoId, int $materiaId, int $asigId = 0):
         $topePersonal = true;
     }
 
-    $faltas = $colAsistencia->countDocuments([
-        'alumno_id' => $alumnoId,
-        'materia_id' => $materiaId,
-        'estado' => 'ausente',
-    ]);
+    // Faltas que cuentan (con fracciones en el día completo; la asistencia por materia de un curso por día completo no cuenta)
+    $faltas = AsistenciaReglas::faltasPorAlumno($pdo, $mongoDB, [$alumnoId], $materiaId)[$alumnoId] ?? 0.0;
 
     $yaLibre = $colLibres->findOne(['alumno_id' => $alumnoId, 'materia_id' => $materiaId]);
 
@@ -57,7 +54,7 @@ function evaluarLibre($mongoDB, int $alumnoId, int $materiaId, int $asigId = 0):
         $colLibres->insertOne([
             'alumno_id' => $alumnoId,
             'materia_id' => $materiaId,
-            'motivo' => "Superó el tope de {$tope} faltas",
+            'motivo' => 'Superó el tope de ' . $tope . ' faltas (' . AsistenciaReglas::fmtFaltas($faltas) . ')',
             'fecha' => new MongoDB\BSON\UTCDateTime(),
             'registrado_por' => (int)$_SESSION['user_id'],
         ]);
@@ -74,9 +71,13 @@ function evaluarLibre($mongoDB, int $alumnoId, int $materiaId, int $asigId = 0):
  * Si llega division_dia, se trabaja con la asistencia por día de esa división (solo si su curso está
  * configurado así). Si no, con la materia (materia_id). En modo día las asistencias se guardan con materia_id = 0.
  */
-function resolverAmbito(PDO $pdo, array $yo): array {
+function resolverAmbito(PDO $pdo, array $yo, bool $escritura = false): array {
     $divDia = (int)($_POST['division_dia'] ?? 0);
     if ($divDia > 0) {
+        // Pasar la asistencia del día completo: solo el secretario (dirección y la madre pueden verla)
+        if ($escritura && !AsistenciaReglas::puedeCargarDiaCompleto((string)$yo['rol'])) {
+            jsonResponse(['ok' => false, 'mensaje' => 'Solo el secretario puede pasar la asistencia por día completo. Los docentes cargan la de su materia.'], 403);
+        }
         if (!AsistenciaReglas::divisionPorDia($pdo, $divDia)) {
             jsonResponse(['ok' => false, 'mensaje' => 'Ese curso no toma asistencia por día'], 400);
         }
@@ -117,11 +118,28 @@ function divisionParaRegistro(PDO $pdo, array $amb, int $alumnoId): int {
     return (int)$st->fetchColumn();
 }
 
+/**
+ * Normaliza lo que manda la pantalla a [estado, valor_falta].
+ * Por materia: 'presente' / 'ausente' (ausente = 1 falta).
+ * Por día completo: además 0, 0.25, 0.5, 0.75 o 1 (fracciones de falta).
+ * @return array{0:string,1:float}|null null si el valor no es válido
+ */
+function normalizarFalta($v, bool $dia): ?array {
+    if ($v === 'presente') return ['presente', 0.0];
+    if ($v === 'ausente')  return ['ausente', 1.0];
+    if (!$dia || !is_numeric($v)) return null;
+    $f = round((float)$v, 2);
+    foreach (AsistenciaReglas::VALORES_FALTA as $ok) {
+        if (abs($f - $ok) < 0.001) return [$ok > 0 ? 'ausente' : 'presente', $ok];
+    }
+    return null;
+}
+
 try {
     switch ($action) {
 
     case 'guardar_lote':
-    $amb       = resolverAmbito($pdo, $yo);
+    $amb       = resolverAmbito($pdo, $yo, true);
     $materiaId = $amb['materiaId'];
     $fecha     = $_POST['fecha'] ?? date('Y-m-d');
     $cambios   = json_decode($_POST['cambios'] ?? '{}', true);
@@ -137,9 +155,11 @@ try {
     $fechaInicio = new MongoDB\BSON\UTCDateTime(strtotime($fecha . ' 00:00:00') * 1000);
     $libres = [];
 
-    foreach ($cambios as $alumnoId => $estado) {
+    foreach ($cambios as $alumnoId => $valorRecibido) {
         $alumnoId = (int)$alumnoId;
-        if (!in_array($estado, ['presente', 'ausente'])) continue;
+        $norm = normalizarFalta($valorRecibido, $amb['dia']);
+        if ($norm === null) continue;
+        [$estado, $valorFalta] = $norm;
         // Solo alumnos que este usuario puede gestionar en esta materia / división
         if (!alumnoEnAmbito($pdo, $yo, $amb, $alumnoId)) continue;
 
@@ -152,13 +172,14 @@ try {
             ['$set' => [
                 'division_id' => $divisionId,
                 'estado' => $estado,
+                'valor_falta' => $valorFalta,
                 'fecha_actualizacion' => new MongoDB\BSON\UTCDateTime(),
             ]],
             ['upsert' => true]
         );
 
         // Evaluar libre
-        $resultado = evaluarLibre($mongoDB, $alumnoId, $materiaId, $amb['asigId']);
+        $resultado = evaluarLibre($pdo, $mongoDB, $alumnoId, $materiaId, $amb['asigId']);
         if ($resultado['libre'] && $estado === 'ausente') {
             $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
             $stmt->execute([$alumnoId]);
@@ -174,15 +195,16 @@ try {
         // GUARDAR UN SOLO ALUMNO (tap en la card)
         // ============================================================
         case 'guardar_uno':
-            $amb       = resolverAmbito($pdo, $yo);
+            $amb       = resolverAmbito($pdo, $yo, true);
             $materiaId = $amb['materiaId'];
             $alumnoId  = (int)($_POST['alumno_id'] ?? 0);
             $fecha     = $_POST['fecha'] ?? date('Y-m-d');
-            $estado    = $_POST['estado'] ?? 'presente';
+            $norm      = normalizarFalta($_POST['estado'] ?? 'presente', $amb['dia']);
 
-            if (!$alumnoId || !in_array($estado, ['presente', 'ausente'])) {
+            if (!$alumnoId || $norm === null) {
                 jsonResponse(['ok' => false, 'mensaje' => 'Datos inválidos'], 400);
             }
+            [$estado, $valorFalta] = $norm;
             if (!alumnoEnAmbito($pdo, $yo, $amb, $alumnoId)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'No tenés permiso sobre ese alumno'], 403);
             }
@@ -199,16 +221,18 @@ try {
                 ['$set' => [
                     'division_id' => $divisionId,
                     'estado' => $estado,
+                    'valor_falta' => $valorFalta,
                     'fecha_actualizacion' => new MongoDB\BSON\UTCDateTime(),
                 ]],
                 ['upsert' => true]
             );
 
-            $resultado = evaluarLibre($mongoDB, $alumnoId, $materiaId, $amb['asigId']);
+            $resultado = evaluarLibre($pdo, $mongoDB, $alumnoId, $materiaId, $amb['asigId']);
             jsonResponse([
                 'ok' => true,
                 'libre' => $resultado['libre'],
                 'faltas' => $resultado['faltas'],
+                'faltas_texto' => AsistenciaReglas::fmtFaltas((float)$resultado['faltas']),
                 'tope' => $resultado['tope'],
                 'tope_personal' => $resultado['tope_personal'],
             ]);
@@ -239,16 +263,33 @@ try {
                     'division_id' => ['$in' => array_map('intval', $stDivs->fetchAll(PDO::FETCH_COLUMN))],
                 ]);
             } else {
+                $set = ['faltas_maximas' => $faltasMax];
+                // La materia lleva asistencia propia que cuenta para quedar libre aunque su curso sea por día completo
+                if (isset($_POST['cuenta_en_curso_completo'])) $set['cuenta_en_curso_completo'] = $_POST['cuenta_en_curso_completo'] === '1';
                 $colReglas->updateOne(
                     ['materia_id' => $materiaId],
-                    ['$set' => ['faltas_maximas' => $faltasMax]],
+                    ['$set' => $set],
                     ['upsert' => true]
                 );
                 $conFaltas = $colAsistencia->distinct('alumno_id', ['materia_id' => $materiaId, 'estado' => 'ausente']);
             }
             // Reevaluar a quienes ya tienen faltas (si bajó el tope, pueden quedar libres)
-            foreach ($conFaltas as $aid) evaluarLibre($mongoDB, (int)$aid, $materiaId, $amb['asigId']);
+            foreach ($conFaltas as $aid) evaluarLibre($pdo, $mongoDB, (int)$aid, $materiaId, $amb['asigId']);
             jsonResponse(['ok' => true]);
+            break;
+
+        // ============================================================
+        // ASISTENCIA PROPIA DE LA MATERIA en un curso por día completo (docente, secretario, directivo, madre)
+        // ============================================================
+        case 'asistencia_propia':
+            $amb       = resolverAmbito($pdo, $yo);
+            $materiaId = $amb['materiaId'];
+            if ($amb['dia'] || $materiaId <= 0) jsonResponse(['ok' => false, 'mensaje' => 'Elegí una materia'], 400);
+            $propia = ($_POST['cuenta_en_curso_completo'] ?? '0') === '1';
+            $colReglas->updateOne(['materia_id' => $materiaId], ['$set' => ['cuenta_en_curso_completo' => $propia]], ['upsert' => true]);
+            $conFaltas = $colAsistencia->distinct('alumno_id', ['materia_id' => $materiaId, 'estado' => 'ausente']);
+            foreach ($conFaltas as $aid) evaluarLibre($pdo, $mongoDB, (int)$aid, $materiaId, $amb['asigId']);
+            jsonResponse(['ok' => true, 'propia' => $propia]);
             break;
 
         // ============================================================
@@ -272,7 +313,7 @@ try {
                 ['$set' => ['tope' => $tope]],
                 ['upsert' => true]
             );
-            evaluarLibre($mongoDB, $alumnoId, $materiaId, $amb['asigId']);
+            evaluarLibre($pdo, $mongoDB, $alumnoId, $materiaId, $amb['asigId']);
             jsonResponse(['ok' => true]);
             break;
 

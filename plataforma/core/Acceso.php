@@ -123,10 +123,7 @@ class Acceso {
         if ($divisionId <= 0) return false;
         if (self::esMadre($u)) return true;
         if (self::esAdminInst($u)) return self::divisionEnMiInst($pdo, $u, $divisionId);
-        if ($u['rol'] === 'docente') {
-            return (bool)self::valor($pdo, "SELECT 1 FROM asignaciones_docente WHERE docente_id = ? AND division_id = ? LIMIT 1", [$u['id'], $divisionId]);
-        }
-        return false;
+        return false; // el docente no ve la asistencia por día completo: solo la de su materia
     }
 
     /** ¿Puede gestionar la asistencia por día de ESTE alumno en ESTA división? (el alumno debe cursar en ella) */

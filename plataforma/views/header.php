@@ -65,27 +65,40 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
 </head>
 <body>
 
-<?php if ($rolActual === 'alumno'): ?>
-    <?php
+<?php
+// Aviso de LIBRE: ventana emergente (una vez por sesión de navegador para cada combinación), no un banner fijo
+$avisosLibre = [];
+if ($rolActual === 'alumno') {
     $libres = obtenerMateriasLibres($pdo, $mongoDB, (int)$_SESSION['user_id']);
-    if (!empty($libres)) {
-        echo '<div class="alerta-libre-global">⚠️ Quedaste LIBRE en: <strong>' . h(implode(' · ', array_column($libres, 'nombre'))) . '</strong></div>';
-    }
-    ?>
-<?php elseif ($rolActual === 'familiar'): ?>
-    <?php
-    $alumnosFam = AcademicModel::alumnosDeFamiliar($pdo, (int)$_SESSION['user_id']);
-    foreach ($alumnosFam as $aid) {
+    if (!empty($libres)) $avisosLibre[] = 'Quedaste LIBRE en: ' . implode(' · ', array_column($libres, 'nombre'));
+} elseif ($rolActual === 'familiar') {
+    foreach (AcademicModel::alumnosDeFamiliar($pdo, (int)$_SESSION['user_id']) as $aid) {
         $libresFam = obtenerMateriasLibres($pdo, $mongoDB, $aid);
-        if (!empty($libresFam)) {
-            $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
-            $stmt->execute([$aid]);
-            $al = $stmt->fetch();
-            echo '<div class="alerta-libre-global">⚠️ ' . h($al['nombre'] . ' ' . $al['apellido'])
-                . ' quedó LIBRE en: <strong>' . h(implode(' · ', array_column($libresFam, 'nombre'))) . '</strong></div>';
-        }
+        if (empty($libresFam)) continue;
+        $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
+        $stmt->execute([$aid]);
+        $al = $stmt->fetch();
+        if ($al) $avisosLibre[] = trim($al['nombre'] . ' ' . $al['apellido']) . ' quedó LIBRE en: ' . implode(' · ', array_column($libresFam, 'nombre'));
     }
-    ?>
+}
+?>
+<?php if (!empty($avisosLibre)): ?>
+<div class="modal-fondo oculto" id="modalAvisoLibre">
+    <div class="modal-caja">
+        <h3>⚠️ Aviso de alumno libre</h3>
+        <?php foreach ($avisosLibre as $av): ?><p><?= h($av) ?></p><?php endforeach; ?>
+        <div class="modal-acciones">
+            <button type="button" class="btn-primario" onclick="document.getElementById('modalAvisoLibre').classList.add('oculto')">Entendido</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var clave = 'avisoLibre:' + <?= json_encode(md5(implode('|', $avisosLibre))) ?>, ya = false;
+    try { ya = sessionStorage.getItem(clave) === '1'; sessionStorage.setItem(clave, '1'); } catch (e) {}
+    if (!ya) document.getElementById('modalAvisoLibre').classList.remove('oculto');
+})();
+</script>
 <?php endif; ?>
 
 <header class="top-bar">

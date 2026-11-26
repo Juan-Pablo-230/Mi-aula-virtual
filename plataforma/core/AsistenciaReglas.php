@@ -54,18 +54,78 @@ class AsistenciaReglas {
         return (int)$st->fetchColumn();
     }
 
-    /** Divisiones en modo "por día" que el usuario puede gestionar, con el nombre del curso. */
-    public static function divisionesPorDia(PDO $pdo, array $u): array {
+    /** Valores de falta permitidos en la asistencia por día completo: presente, ¼, ½, ¾ o falta entera. */
+    const VALORES_FALTA = [0.0, 0.25, 0.5, 0.75, 1.0];
+
+    /** Solo el secretario pasa la asistencia por día completo (dirección y la madre la ven). */
+    public static function puedeCargarDiaCompleto(string $rol): bool { return $rol === 'secretario'; }
+
+    /** Cantidad de faltas con coma decimal: 3 -> "3", 3.25 -> "3,25". */
+    public static function fmtFaltas(float $f): string {
+        $s = rtrim(rtrim(number_format($f, 2, ',', ''), '0'), ',');
+        return $s === '' ? '0' : $s;
+    }
+
+    /** Etiqueta de una falta: 0.25 -> "¼", 0.5 -> "½", 0.75 -> "¾", 1 -> "1". */
+    public static function etiquetaFalta(float $v): string {
+        return ['0.25' => '¼', '0.5' => '½', '0.75' => '¾', '1' => '1'][(string)round($v, 2)] ?? self::fmtFaltas($v);
+    }
+
+    /** Ids de todas las divisiones cuyo curso toma asistencia por día completo. */
+    public static function divisionesDiaIds(PDO $pdo): array {
+        static $ids = null;
+        if ($ids === null) {
+            $ids = [];
+            if (self::modoPorDiaDisponible($pdo)) {
+                $ids = array_map('intval', $pdo->query("SELECT d.id FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id WHERE a.asistencia_por_dia = 1")->fetchAll(PDO::FETCH_COLUMN));
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * Una materia de un curso por día completo puede llevar asistencia propia que SÍ cuenta para quedar libre
+     * (regla de la materia). Si no, la asistencia por materia de esos cursos se guarda y se muestra, pero se ignora al contar.
+     */
+    public static function materiaCuentaEnCursoCompleto($mongoDB, int $materiaId): bool {
+        if ($materiaId <= 0) return false;
+        $r = $mongoDB->selectCollection('reglas_asistencia')->findOne(['materia_id' => $materiaId]);
+        return $r && !empty($r['cuenta_en_curso_completo']);
+    }
+
+    /**
+     * Faltas acumuladas por alumno (con fracciones en el modo por día) que cuentan para el tope.
+     * @return array<int,float> alumno_id => faltas
+     */
+    public static function faltasPorAlumno(PDO $pdo, $mongoDB, array $alumnoIds, int $claveMateria): array {
+        $alumnoIds = array_values(array_unique(array_map('intval', $alumnoIds)));
+        if (!$alumnoIds) return [];
+        $match = ['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $alumnoIds], 'estado' => 'ausente'];
+        if ($claveMateria > 0 && !self::materiaCuentaEnCursoCompleto($mongoDB, $claveMateria)) {
+            $dia = self::divisionesDiaIds($pdo);
+            if ($dia) $match['division_id'] = ['$nin' => $dia];   // curso por día completo: la materia no computa
+        }
+        $out = [];
+        $rows = $mongoDB->selectCollection('asistencia')->aggregate([
+            ['$match' => $match],
+            ['$group' => ['_id' => '$alumno_id', 'total' => ['$sum' => ['$ifNull' => ['$valor_falta', 1]]]]],
+        ]);
+        foreach ($rows as $r) $out[(int)$r['_id']] = (float)$r['total'];
+        return $out;
+    }
+
+    /** Divisiones en modo "por día" que el usuario puede ver/gestionar, con el nombre del curso. $instId: para la madre, la institución elegida. */
+    public static function divisionesPorDia(PDO $pdo, array $u, int $instId = 0): array {
         if (!self::modoPorDiaDisponible($pdo)) return [];
         $base = "SELECT DISTINCT d.id, d.nombre AS division, asg.nombre AS curso
                  FROM divisiones d JOIN asignaciones asg ON asg.id = d.asignacion_id";
         $orden = " ORDER BY asg.nombre, d.nombre";
         if ($u['rol'] === 'docente') {
-            $st = $pdo->prepare("$base JOIN asignaciones_docente ad ON ad.division_id = d.id
-                                 WHERE asg.asistencia_por_dia = 1 AND ad.docente_id = ? AND asg.institucion_id = ?" . $orden);
-            $st->execute([$u['id'], (int)($u['inst'] ?? 0)]);
+            return []; // el docente solo carga la asistencia de su materia
         } elseif ($u['rol'] === 'madre') {
-            $st = $pdo->query("$base WHERE asg.asistencia_por_dia = 1" . $orden);
+            if ($instId <= 0) return [];
+            $st = $pdo->prepare("$base WHERE asg.asistencia_por_dia = 1 AND asg.institucion_id = ?" . $orden);
+            $st->execute([$instId]);
         } else {
             $st = $pdo->prepare("$base WHERE asg.asistencia_por_dia = 1 AND asg.institucion_id = ?" . $orden);
             $st->execute([$u['inst']]);

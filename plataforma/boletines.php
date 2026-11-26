@@ -53,11 +53,20 @@ elseif ($rol === 'familiar') {
 
 $materias = $alumnoId ? AcademicModel::materiasAlumnoEnAño($pdo, $alumnoId, $añoSel) : [];
 $boletin = [];
+// Promedios confirmados (MongoDB): una sola consulta para todas las materias del alumno
+$confPorMateria = [];
+if ($alumnoId && $materias) {
+    $cur = $mongoDB->selectCollection('promedios_confirmados')->find(['alumno_id' => $alumnoId, 'materia_id' => ['$in' => array_map(fn($m) => (int)$m['id'], $materias)]]);
+    foreach ($cur as $c) {
+        $añoC = isset($c['año_lectivo']) ? (int)$c['año_lectivo'] : null;
+        if ($añoC !== null && $añoC !== $añoSel) continue;
+        $confPorMateria[(int)$c['materia_id']] = $c;
+    }
+}
 foreach ($materias as $m) {
-    $cals = obtenerCalificacionesAlumno($mongoDB, $alumnoId, (int)$m['id']);
-    $stmt = $pdo->prepare("SELECT * FROM promedios_confirmados WHERE alumno_id = ? AND materia_id = ?");
-    $stmt->execute([$alumnoId, $m['id']]); $conf = $stmt->fetch();
-    $boletin[] = ['materia' => $m['nombre'], 'promedio' => ($conf && $conf['confirmado']) ? (float)$conf['promedio_confirmado'] : null, 'pendiente' => !($conf && $conf['confirmado'])];
+    $conf = $confPorMateria[(int)$m['id']] ?? null;
+    $ok = $conf && !empty($conf['confirmado']);
+    $boletin[] = ['materia' => $m['nombre'], 'promedio' => $ok ? (float)$conf['promedio'] : null, 'pendiente' => !$ok];
 }
 ?>
 <?php include __DIR__ . '/views/header.php'; ?>
@@ -85,7 +94,7 @@ foreach ($materias as $m) {
             <thead><tr><th>Materia</th><th>Promedio</th></tr></thead>
             <tbody>
             <?php foreach ($boletin as $b): ?>
-                <tr><td><?= h($b['materia']) ?></td><td><?= $b['pendiente'] ? '<span class="pendiente">Pendiente</span>' : '<strong>' . number_format($b['promedio'], 2) . '</strong>' ?></td></tr>
+                <tr><td><?= h($b['materia']) ?></td><td><?= $b['pendiente'] ? '<span class="pendiente">Pendiente</span>' : '<strong>' . h(formatoNota($b['promedio'])) . '</strong>' ?></td></tr>
             <?php endforeach; ?>
             </tbody>
         </table>

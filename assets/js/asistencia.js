@@ -122,6 +122,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // TOGGLE (solo visual)
 // ============================================================
 function toggleAsistencia(el, alumnoId) {
+    if (el.dataset.libre === '2') {
+        mostrarToast('Este alumno quedó LIBRE por la asistencia general (día completo). Se gestiona desde esa asistencia.', 'error');
+        return;
+    }
     if (el.dataset.libre === '1') {
         if (!window.ES_DIRECTIVO) {
             mostrarToast('Este alumno está LIBRE. Solo dirección puede quitar ese estado.', 'error');
@@ -146,6 +150,19 @@ function toggleAsistencia(el, alumnoId) {
         delete cambios[alumnoId];
     }
 
+    actualizarAviso();
+}
+
+// Asistencia por día completo: presente, ¼, ½, ¾ o 1 falta
+function setFalta(btn, alumnoId, valor) {
+    const card = btn.closest('.alumno-card');
+    card.querySelectorAll('.falta-btn').forEach(b => b.classList.toggle('activo', b === btn));
+    card.dataset.valor = valor;
+    card.dataset.estado = valor > 0 ? 'ausente' : 'presente';
+    card.classList.toggle('ausente', valor > 0);
+    card.classList.toggle('presente', valor === 0);
+    if (Math.abs(valor - parseFloat(card.dataset.originalValor)) > 0.001) cambios[alumnoId] = valor;
+    else delete cambios[alumnoId];
     actualizarAviso();
 }
 
@@ -189,6 +206,7 @@ async function guardarAsistencia() {
 
         document.querySelectorAll('.alumno-card').forEach(el => {
             el.dataset.original = el.dataset.estado;
+            if (el.dataset.valor !== undefined) el.dataset.originalValor = el.dataset.valor;
         });
 
         Object.keys(cambios).forEach(k => delete cambios[k]);
@@ -225,6 +243,21 @@ async function guardarTopeMateria() {
         setTimeout(() => location.reload(), 1000);
     } else {
         mostrarToast(d.mensaje, 'error');
+    }
+}
+
+async function guardarAsistenciaPropia(chk) {
+    const fd = new FormData();
+    agregarAmbito(fd);
+    fd.append('cuenta_en_curso_completo', chk.checked ? '1' : '0');
+    const r = await fetchConSesion(API_ASIST + '?action=asistencia_propia', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) {
+        mostrarToast(chk.checked ? 'La materia lleva asistencia propia (cuenta para quedar libre)' : 'La asistencia de la materia solo se informa', 'ok');
+        setTimeout(() => location.reload(), 900);
+    } else {
+        chk.checked = !chk.checked;
+        mostrarToast(d.mensaje || 'Error', 'error');
     }
 }
 

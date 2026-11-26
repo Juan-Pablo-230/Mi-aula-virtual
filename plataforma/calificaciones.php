@@ -4,6 +4,9 @@ require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/core/GradeHelpers.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/MongoIndices.php';
+
+MongoIndices::asegurar($mongoDB); // índices que aceleran la carga (una sola vez)
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -98,6 +101,7 @@ if ($materiaId === 0) {
         <?php if (empty($materias)): ?>
             <p class="alerta info">No hay materias para el año <?= $añoSel ?>.</p>
         <?php endif; ?>
+
     </main>
     <?php include __DIR__ . '/views/footer.php'; ?>
     <?php exit;
@@ -132,11 +136,16 @@ if ($rol === 'alumno') {
     }
 }
 
+// Una sola tanda de consultas para todos los alumnos (antes eran varias por alumno y por tarea)
+$alumnosIdsLote = array_map(fn($a) => (int)$a['id'], $alumnos);
+$calsLote  = obtenerCalificacionesLote($mongoDB, $alumnosIdsLote, $materiaId, $añoSel);
+$confLote  = obtenerPromediosConfirmadosLote($mongoDB, $alumnosIdsLote, $materiaId, $añoSel);
 $datos = [];
 foreach ($alumnos as $a) {
-    $cals = obtenerCalificacionesAlumno($mongoDB, (int)$a['id'], $materiaId);
+    $aid  = (int)$a['id'];
+    $cals = $calsLote[$aid] ?? [];
     $prom = calcularPromedio($cals);
-    $conf = $mongoDB->selectCollection('promedios_confirmados')->findOne(['alumno_id' => (int)$a['id'], 'materia_id' => $materiaId, 'año_lectivo' => $añoSel]);
+    $conf = $confLote[$aid] ?? null;
     $datos[] = ['alumno' => $a, 'cals' => $cals, 'promedio' => $prom, 'conf' => $conf, 'confirmado' => $conf && !empty($conf['confirmado'])];
 }
 ?>
@@ -146,7 +155,13 @@ foreach ($alumnos as $a) {
     <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;">
         <a href="/plataforma/calificaciones.php?año=<?= $añoSel ?>" class="btn-secundario">← Volver</a>
         <h1 style="margin:0;">📊 <?= h($materia['nombre']) ?> — <?= $añoSel ?></h1>
+        <?php if ($puedeCalificar && $alumnos): ?>
+            <button class="btn-primario" style="margin-left:auto;" onclick="abrirNuevaGlobal()">🌐 Calificación global</button>
+        <?php endif; ?>
     </div>
+    <?php if ($puedeCalificar && $alumnos): ?>
+        <p style="color:#a5c3e8; font-size:0.85rem; margin-top:-0.5rem;">Una calificación global (por ejemplo, Conducta) se crea una vez y se carga a todos los alumnos con la nota que elijas; después podés corregir la de cada uno.</p>
+    <?php endif; ?>
 
     <?php if (count($añosDisponibles) > 1): ?>
         <div class="panel-vidrio" style="padding:0.75rem 1rem; margin-bottom:1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
@@ -173,39 +188,38 @@ foreach ($alumnos as $a) {
                 <p class="alerta info" style="margin-top:1rem;">Sin calificaciones.</p>
             <?php else: ?>
                 <table class="tabla-alumnos">
-                    <thead><tr><th>Concepto</th><th>Origen</th><th>Nota</th><?php if ($puedeCalificar): ?><th></th><?php endif; ?></tr></thead>
+                    <thead><tr><th>Origen</th><th>Nota</th><?php if ($puedeCalificar): ?><th></th><?php endif; ?></tr></thead>
                     <tbody>
                         <?php foreach ($d['cals'] as $c): ?>
                             <tr>
-                                <td><?= h($c['concepto']) ?></td>
-                                <td><?= $c['origen'] === 'tarea' ? '📝 Tarea' : '➕ Extra' ?></td>
-                                <td><?php
-                                    $soloAlumno = in_array($rol, ['alumno', 'familiar'], true);
-                                    if ($soloAlumno && ($c['origen'] ?? '') === 'tarea' && ($c['vista'] ?? 'letras') === 'numerica' && $c['nota_numerica'] !== null) {
-                                        echo h(number_format((float)$c['nota_numerica'], 2));
-                                    } elseif ($soloAlumno && ($c['origen'] ?? '') === 'tarea' && ($c['vista'] ?? 'letras') === 'letras' && !empty($c['calificacion'])) {
-                                        echo h($c['calificacion']);
-                                    } else {
-                                        echo h($c['calificacion'] ?? number_format((float)$c['nota_numerica'], 2));
-                                    }
-                                ?></td>
+                                <td><?= $c['origen'] === 'tarea' ? '📝 ' : (!empty($c['global_id']) ? '🌐 ' : '➕ ') ?><?= h($c['concepto']) ?></td>
+                                <td><?= h(formatoNota(notaNumericaDe($c))) ?></td>
                                 <?php if ($puedeCalificar): ?>
-                                    <td><?php if ($c['origen'] === 'extra'): ?><button class="btn-peligro-sm" onclick="eliminarExtra('<?= h($c['id']) ?>')">🗑️</button><?php endif; ?></td>
+                                    <td><?php if ($c['origen'] === 'extra'): ?><button class="btn-peligro-sm" title="Eliminar esta nota" onclick="eliminarExtra('<?= h($c['id']) ?>')">🗑️</button>
+                                        <?php if (!empty($c['global_id'])): ?><button class="btn-peligro-sm" title="Eliminar esta global para todos los alumnos" onclick="eliminarGlobal('<?= h($c['global_id']) ?>', <?= h(jsonJs($c['concepto'])) ?>)">🌐🗑️</button><?php endif; ?><?php endif; ?></td>
                                 <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <td><strong>Promedio</strong></td>
+                            <td><strong><?= h(formatoNota($prom)) ?></strong>
+                                <small style="margin-left:0.4rem; color:<?= $conf ? '#86efac' : '#fbbf24' ?>;"><?= $conf ? '✅ Confirmado' : '⏳ Pendiente de confirmación' ?></small></td>
+                            <?php if ($puedeCalificar): ?><td></td><?php endif; ?>
+                        </tr>
+                    </tfoot>
                 </table>
             <?php endif; ?>
             <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.04); border-radius:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
                 <div>
                     <strong>Promedio:</strong>
                     <?php if ($prom === null): ?><span class="pendiente">Sin calificaciones</span>
-                    <?php elseif ($conf): ?><span class="promedio-valor"><?= number_format($prom, 2) ?></span>
-                    <?php else: ?><span class="pendiente">Pendiente de confirmación</span><?php endif; ?>
+                    <?php elseif ($conf): ?><span class="promedio-valor"><?= h(formatoNota($prom)) ?></span> <small style="color:#86efac;">✅ Confirmado</small>
+                    <?php else: ?><span class="promedio-valor"><?= h(formatoNota($prom)) ?></span> <span class="pendiente">Pendiente de confirmación</span><?php endif; ?>
                 </div>
                 <?php if ($puedeCalificar && $prom !== null && !$conf): ?>
-                    <button class="btn-primario" onclick="abrirConfirmarPromedio(<?= (int)$a['id'] ?>, <?= (float)$prom ?>, '<?= h(numericoACalificacion($prom) ?? '') ?>')">✅ Confirmar promedio</button>
+                    <button class="btn-primario" onclick="abrirConfirmarPromedio(<?= (int)$a['id'] ?>, <?= (float)$prom ?>, '<?= h(formatoNota($prom)) ?>')">✅ Confirmar promedio</button>
                 <?php endif; ?>
             </div>
         </div>
@@ -230,6 +244,35 @@ foreach ($alumnos as $a) {
     </div>
 </div>
 
+<div class="modal-fondo oculto" id="modalGlobal">
+    <div class="modal-caja">
+        <h3>🌐 Calificación global</h3>
+        <form id="formGlobal">
+            <input type="hidden" name="materia_id" value="<?= (int)$materiaId ?>">
+            <input type="hidden" name="año_lectivo" value="<?= $añoSel ?>">
+            <label>Nombre <input type="text" name="concepto" required maxlength="120" placeholder="Ej: Conducta"></label>
+            <div style="max-height:50vh; overflow:auto; margin-top:0.75rem;">
+                <table class="tabla-alumnos" style="width:100%;">
+                    <thead><tr><th>Apellido y nombre</th><th style="width:7rem;">Nota</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($alumnos as $al): ?>
+                        <tr>
+                            <td><?= h(nombreCompleto($al)) ?></td>
+                            <td><input type="number" min="0" max="10" step="0.01" class="nota-global" data-alumno="<?= (int)$al['id'] ?>" placeholder="0 - 10" style="width:6rem;"></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <p style="color:#a5c3e8; font-size:0.85rem;">Los alumnos con la nota vacía quedan sin calificación global.</p>
+            <div class="modal-acciones">
+                <button type="button" class="btn-secundario" onclick="cerrarModal('modalGlobal')">Cancelar</button>
+                <button type="submit" class="btn-primario">Cargar a todos</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="modal-fondo oculto" id="modalConfirmar">
     <div class="modal-caja">
         <h3>✅ Confirmar promedio</h3>
@@ -237,7 +280,7 @@ foreach ($alumnos as $a) {
             <input type="hidden" name="alumno_id" id="confAlumnoId">
             <input type="hidden" name="materia_id" value="<?= (int)$materiaId ?>">
             <input type="hidden" name="año_lectivo" value="<?= $añoSel ?>">
-            <p>Promedio calculado: <strong><span id="confPromedio"></span></strong> <span id="confLetra"></span></p>
+            <p>Promedio calculado: <strong><span id="confPromedio"></span></strong></p>
             <label>Formato
                 <select name="formato">
                     <option value="numerico">Numérico</option>
