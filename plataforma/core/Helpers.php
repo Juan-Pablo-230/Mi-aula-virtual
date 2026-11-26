@@ -108,3 +108,13 @@ function cicloActual(PDO $pdo, int $institucionId): ?array {
     $stmt->execute([$institucionId, (int)date('Y')]);
     return $stmt->fetch() ?: null;
 }
+
+/** Institución activa de la sesión (0 si no tiene, p. ej. la madre). */
+function instActivaId(): int {
+    return (int)($_SESSION['institucion_id'] ?? 0);
+}
+
+/** Fragmento SQL: restringe a las materias de la institución activa (para consultas de un docente). */
+function sqlMateriaDeInstActiva(string $col = 'ad.materia_id'): string {
+    return " AND $col IN (SELECT id FROM materias WHERE institucion_id = " . instActivaId() . ")";
+}

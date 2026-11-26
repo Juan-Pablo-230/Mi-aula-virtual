@@ -13,7 +13,8 @@ $esMadre = esMadre();
 $userId = (int)$_SESSION['user_id'];
 
 $userActual = UserModel::findById($pdo, $userId);
-$miInstitucionId = $userActual ? (int)($userActual['institucion_id'] ?? 0) : 0;
+// Institución activa de la sesión (si trabaja en varias, la que eligió)
+$miInstitucionId = instActivaId();
 
 if (!$esMadre && !$miInstitucionId) {
     jsonResponse(['ok' => false, 'mensaje' => 'Tu usuario no tiene institución asignada'], 403);
@@ -24,7 +25,23 @@ function puedeGestionar(PDO $pdo, int $targetId, bool $esMadre, int $miInstituci
     $stmt = $pdo->prepare("SELECT institucion_id FROM usuarios WHERE id = ?");
     $stmt->execute([$targetId]);
     $inst = $stmt->fetchColumn();
-    return $inst !== false && (int)$inst === $miInstitucionId;
+    if ($inst !== false && (int)$inst === $miInstitucionId) return true;
+    // Personal de otra institución que también trabaja en la mía
+    return $miInstitucionId > 0 && Membresias::esSecundaria($pdo, $targetId, $miInstitucionId);
+}
+
+/** Guarda las asignaciones docente (materia-división) del formulario, solo de la institución dada. */
+function guardarAsignacionesDocenteForm(PDO $pdo, int $docenteId, int $instId): void {
+    $asignaciones = $_POST['asignaciones'] ?? [];
+    if (!is_array($asignaciones)) return;
+    $ins = $pdo->prepare("INSERT IGNORE INTO asignaciones_docente (docente_id, materia_id, division_id) VALUES (?, ?, ?)");
+    foreach ($asignaciones as $par) {
+        [$materiaId, $divisionId] = array_map('intval', explode('-', (string)$par));
+        if ($materiaId <= 0 || $divisionId <= 0) continue;
+        if ($instId > 0 && !divisionEsDeInstitucion($pdo, $divisionId, $instId)) continue;
+        if (!esMateriaCompatible($pdo, $materiaId, $divisionId)) continue;
+        $ins->execute([$docenteId, $materiaId, $divisionId]);
+    }
 }
 
 /** La división pertenece a la institución (0 = sin división, siempre válido). */
@@ -130,6 +147,27 @@ try {
                         'solicitud_pendiente' => (int)$st->fetchColumn() > 0,
                     ], 409);
                 }
+                // Personal que ya trabaja en otra institución: se lo puede sumar a esta con el rol elegido
+                if (Membresias::esPersonal($yaExiste['rol']) && Membresias::esPersonal($rol) && $instExistente > 0) {
+                    if ($esMadre) jsonResponse(['ok' => false, 'mensaje' => 'Ya existe personal con ese DNI. Se lo suma a una institución desde la sesión de esa institución.'], 400);
+                    if (Membresias::rolEn($pdo, (int)$yaExiste['id'], $miInstitucionId) !== null) {
+                        jsonResponse(['ok' => false, 'mensaje' => 'Esa persona ya trabaja en tu institución'], 400);
+                    }
+                    $otras = array_values(array_filter(Membresias::contextos($pdo, (int)$yaExiste['id']), fn($c) => $c['institucion_id'] !== $miInstitucionId));
+                    if (($_POST['agregar_personal'] ?? '') !== '1') {
+                        jsonResponse([
+                            'ok' => false, 'codigo' => 'personal_otra_institucion',
+                            'mensaje' => 'Ese DNI ya corresponde a personal de otra institución.',
+                            'persona' => nombreCompleto($yaExiste),
+                            'instituciones' => array_map(fn($c) => ['nombre' => $c['nombre'], 'rol' => $c['rol']], $otras),
+                        ], 409);
+                    }
+                    $pdo->beginTransaction();
+                    Membresias::agregar($pdo, (int)$yaExiste['id'], $miInstitucionId, $rol);
+                    if ($rol === 'docente') guardarAsignacionesDocenteForm($pdo, (int)$yaExiste['id'], $miInstitucionId);
+                    $pdo->commit();
+                    jsonResponse(['ok' => true, 'id' => (int)$yaExiste['id'], 'agregado' => true]);
+                }
                 if ($instExistente > 0 && $instExistente !== $miInstitucionId) {
                     jsonResponse(['ok' => false, 'mensaje' => 'Ya existe un usuario con ese DNI en otra institución'], 400);
                 }
@@ -219,9 +257,14 @@ try {
             $rol      = $_POST['rol'] ?? '';
             $activo   = $_POST['activo'] ?? '1';
             // El rol no se puede cambiar al editar: se toma siempre el que ya tiene el usuario
-            $stRol = $pdo->prepare("SELECT rol FROM usuarios WHERE id = ?");
-            $stRol->execute([(int)$id]);
-            $rolActual = (string)$stRol->fetchColumn();
+            if ($esMadre) {
+                $stRol = $pdo->prepare("SELECT rol FROM usuarios WHERE id = ?");
+                $stRol->execute([(int)$id]);
+                $rolActual = (string)$stRol->fetchColumn();
+            } else {
+                $rolActual = (string)Membresias::rolEn($pdo, (int)$id, $miInstitucionId); // rol en ESTA institución
+            }
+            $esSecundario = !$esMadre && Membresias::esSecundaria($pdo, (int)$id, $miInstitucionId);
             if ($rolActual === '' || $rolActual === 'madre') jsonResponse(['ok' => false, 'mensaje' => 'Usuario inválido'], 400);
             $rol = $rolActual;
 
@@ -245,16 +288,19 @@ try {
 
             $pdo->beginTransaction();
 
-            UserModel::update($pdo, $id, [
-                'nombre'   => $nombre !== '' ? $nombre : null,
-                'apellido' => $apellido,
-                'dni'      => $dni,
-                'email'    => $email !== '' ? $email : null,
-                'rol'      => $rol,
-                'activo'   => (int)$activo
-            ]);
+            // Los datos personales los gestiona su institución principal: desde otra solo se editan sus asignaciones
+            if (!$esSecundario) {
+                UserModel::update($pdo, $id, [
+                    'nombre'   => $nombre !== '' ? $nombre : null,
+                    'apellido' => $apellido,
+                    'dni'      => $dni,
+                    'email'    => $email !== '' ? $email : null,
+                    'rol'      => $rol,
+                    'activo'   => (int)$activo
+                ]);
+            }
 
-            $instDelUsuario = (int)($pdo->query("SELECT institucion_id FROM usuarios WHERE id = " . (int)$id)->fetchColumn());
+            $instDelUsuario = $esSecundario ? $miInstitucionId : (int)($pdo->query("SELECT institucion_id FROM usuarios WHERE id = " . (int)$id)->fetchColumn());
             if ($rol !== 'alumno') AcademicModel::asignarDivisionAlumno($pdo, (int)$id, 0, $instDelUsuario);
             AcademicModel::borrarAsignacionesDocente($pdo, (int)$id, $esMadre ? 0 : $miInstitucionId);
             $pdo->prepare("DELETE FROM familiares_alumnos WHERE alumno_id = ?")->execute([$id]);
@@ -301,6 +347,13 @@ try {
             if ($id === $userId) jsonResponse(['ok' => false, 'mensaje' => 'No podés eliminarte a vos mismo'], 400);
             if (!puedeGestionar($pdo, $id, $esMadre, $miInstitucionId)) {
                 jsonResponse(['ok' => false, 'mensaje' => 'No podés eliminar usuarios de otra institución'], 403);
+            }
+            if (!$esMadre && Membresias::esSecundaria($pdo, $id, $miInstitucionId)) {
+                Membresias::quitar($pdo, $id, $miInstitucionId); // solo deja de trabajar acá
+                jsonResponse(['ok' => true, 'quitado' => true]);
+            }
+            if (!$esMadre && Membresias::promoverSiTieneOtras($pdo, $id, $miInstitucionId)) {
+                jsonResponse(['ok' => true, 'quitado' => true]); // trabaja en otra institución: no se borra la cuenta
             }
             UserModel::delete($pdo, $id);
             jsonResponse(['ok' => true]);

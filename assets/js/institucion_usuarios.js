@@ -159,6 +159,30 @@ function actualizarAsignacionForm() {
     }
 }
 
+
+// Personal que trabaja en varias instituciones: sus datos personales los gestiona su institución principal.
+function bloquearDatosPersonales(bloquear) {
+    ['userNombre', 'userApellido', 'userDni', 'userEmail'].forEach(id => { const el = document.getElementById(id); if (el) el.readOnly = bloquear; });
+    const act = document.getElementById('userActivo'); if (act) act.disabled = bloquear;
+    let nota = document.getElementById('notaSecundario');
+    if (bloquear && !nota) {
+        nota = document.createElement('p');
+        nota.id = 'notaSecundario'; nota.className = 'alerta info'; nota.style.fontSize = '0.85rem';
+        nota.textContent = 'Esta persona trabaja también en otra institución: sus datos personales los edita su institución principal. Acá podés cambiar sus asignaciones.';
+        document.getElementById('userNombre').closest('label').before(nota);
+    }
+    if (nota) nota.style.display = bloquear ? 'block' : 'none';
+}
+
+// El DNI ya es de personal de otra institución: preguntar si se lo suma a esta (con el rol elegido)
+async function confirmarAgregarPersonal(d, rol, url, fd) {
+    const donde = (d.instituciones || []).map(i => i.nombre + ' (' + i.rol + ')').join(', ');
+    if (!confirm(d.persona + ' ya trabaja en: ' + donde + '.\n\n¿Querés sumarla/o también a esta institución como ' + rol + '?')) return null;
+    fd.set('agregar_personal', '1');
+    const r = await fetchConSesion(url, { method: 'POST', body: fd });
+    return r.json();
+}
+
 // El rol solo se elige al crear; al editar queda de solo lectura.
 function configurarRolSelect(rol, esEdicion) {
     const sel = document.getElementById('userRol');
@@ -173,6 +197,7 @@ function abrirModalCrear() {
     document.getElementById('userId').value = '';
     document.getElementById('userNombre').required = true;
     configurarRolSelect('', false);
+    bloquearDatosPersonales(false);
     document.getElementById('campoPasswordInfo').style.display = 'block';
     document.getElementById('campoActivo').style.display = 'none';
     document.getElementById('campoEmail').style.display = 'none';
@@ -194,6 +219,7 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('userDni').value = u.dni;
     document.getElementById('userEmail').value = u.email || '';
     configurarRolSelect(u.rol, true);
+    bloquearDatosPersonales(Number(u.es_secundario) === 1);
     document.getElementById('userNombre').required = u.rol !== 'familiar';
     document.getElementById('campoPasswordInfo').style.display = 'none';
     document.getElementById('campoActivo').style.display = 'block';
@@ -207,8 +233,8 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('modalUser').classList.remove('oculto');
 }
 
-async function eliminarUsuario(id) {
-    if (!confirm('¿Eliminar este usuario?')) return;
+async function eliminarUsuario(id, secundario) {
+    if (!confirm(secundario ? '¿Quitar a esta persona de esta institución? Su cuenta sigue existiendo en la otra.' : '¿Eliminar este usuario?')) return;
     const fd = new FormData(); fd.append('id', id);
     try {
         const r = await fetchConSesion(window.INST_USER_API + '&action=eliminar', { method: 'POST', body: fd });
@@ -246,8 +272,13 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.textContent = 'Guardando...';
         try {
             const r = await fetchConSesion(url, { method: 'POST', body: fd });
-            const d = await r.json();
-            if (d.ok) { mostrarToast(isEdit ? 'Usuario actualizado' : 'Usuario creado', 'ok'); setTimeout(() => location.reload(), 700); }
+            let d = await r.json();
+            if (d.codigo === 'personal_otra_institucion') {
+                const d2 = await confirmarAgregarPersonal(d, rol, url, fd);
+                if (d2 === null) { btn.disabled = false; btn.textContent = 'Crear'; return; }
+                d = d2;
+            }
+            if (d.ok) { mostrarToast(isEdit ? 'Usuario actualizado' : (d.agregado ? 'Agregado a esta institución' : 'Usuario creado'), 'ok'); setTimeout(() => location.reload(), 700); }
             else { mostrarToast(d.mensaje || 'Error', 'error'); btn.disabled = false; btn.textContent = isEdit ? 'Guardar cambios' : 'Crear'; }
         } catch (err) {
             if (err.message === 'Sesión expirada') return;

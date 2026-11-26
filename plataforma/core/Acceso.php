@@ -159,7 +159,7 @@ class Acceso {
             case 'familiar':
                 return array_map('intval', array_column(AcademicModel::materiasDeFamiliar($pdo, $u['id']), 'id'));
             case 'docente':
-                return self::lista($pdo, "SELECT DISTINCT materia_id FROM asignaciones_docente WHERE docente_id = ?", [$u['id']]);
+                return self::lista($pdo, "SELECT DISTINCT materia_id FROM asignaciones_docente WHERE docente_id = ? AND materia_id IN (SELECT id FROM materias WHERE institucion_id = ?)", [$u['id'], $u['inst']]);
             case 'directivo':
             case 'secretario':
                 return $u['inst'] > 0 ? self::lista($pdo, "SELECT id FROM materias WHERE institucion_id = ?", [$u['inst']]) : [];

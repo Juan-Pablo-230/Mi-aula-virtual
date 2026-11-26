@@ -150,7 +150,7 @@ if ($esAlumno || $esFamiliar) {
 // ============================================================
 $materiaId = (int)($_GET['materia_id'] ?? 0);
 if ($rol === 'docente') {
-    $stmt = $pdo->prepare("SELECT DISTINCT m.id, m.nombre FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ? ORDER BY m.nombre");
+    $stmt = $pdo->prepare("SELECT DISTINCT m.id, m.nombre FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ?" . sqlMateriaDeInstActiva('m.id') . " ORDER BY m.nombre");
     $stmt->execute([$userId]);
 } else {
     $stmt = $pdo->prepare("SELECT id, nombre FROM materias WHERE institucion_id = ? ORDER BY nombre");

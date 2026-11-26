@@ -25,8 +25,8 @@ $usuariosPorId = [];
 if (!empty($otrosIds)) {
     $ph = implode(',', array_fill(0, count($otrosIds), '?'));
     // Conversaciones antiguas con usuarios de otras instituciones ya no se listan
-    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id IN ($ph) AND institucion_id = ? AND ? > 0");
-    $stmt->execute(array_merge($otrosIds, [$miInstitucionId, $miInstitucionId]));
+    $stmt = $pdo->prepare("SELECT id, nombre, apellido, COALESCE((SELECT ui.rol FROM usuarios_instituciones ui WHERE ui.usuario_id = usuarios.id AND ui.institucion_id = ?), rol) AS rol, foto_perfil FROM usuarios WHERE id IN ($ph) AND (institucion_id = ? OR id IN (SELECT usuario_id FROM usuarios_instituciones WHERE institucion_id = ?)) AND ? > 0");
+    $stmt->execute(array_merge([$miInstitucionId], $otrosIds, [$miInstitucionId, $miInstitucionId, $miInstitucionId]));
     foreach ($stmt as $u) $usuariosPorId[(int)$u['id']] = $u;
 }
 
@@ -34,8 +34,8 @@ $destinoId = (int)($_GET['con_id'] ?? 0);
 $destino = null;
 if ($destinoId) {
     // Solo se puede conversar con usuarios activos de la MISMA institución
-    $stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id = ? AND activo = 1 AND institucion_id = ? AND ? > 0");
-    $stmt->execute([$destinoId, $miInstitucionId, $miInstitucionId]);
+    $stmt = $pdo->prepare("SELECT id, nombre, apellido, COALESCE((SELECT ui.rol FROM usuarios_instituciones ui WHERE ui.usuario_id = usuarios.id AND ui.institucion_id = ?), rol) AS rol, foto_perfil FROM usuarios WHERE id = ? AND activo = 1 AND (institucion_id = ? OR id IN (SELECT usuario_id FROM usuarios_instituciones WHERE institucion_id = ?)) AND ? > 0");
+    $stmt->execute([$miInstitucionId, $destinoId, $miInstitucionId, $miInstitucionId, $miInstitucionId]);
     $destino = $stmt->fetch();
     if (!$destino) { $destinoId = 0; }
 }
@@ -104,8 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $destinoId && $destino) {
     }
 }
 
-$stmt = $pdo->prepare("SELECT id, nombre, apellido, rol, foto_perfil FROM usuarios WHERE id != ? AND activo = 1 AND institucion_id = ? AND ? > 0 ORDER BY apellido, nombre");
-$stmt->execute([$userId, $miInstitucionId, $miInstitucionId]);
+$stmt = $pdo->prepare("SELECT id, nombre, apellido, COALESCE((SELECT ui.rol FROM usuarios_instituciones ui WHERE ui.usuario_id = usuarios.id AND ui.institucion_id = ?), rol) AS rol, foto_perfil FROM usuarios WHERE id != ? AND activo = 1 AND (institucion_id = ? OR id IN (SELECT usuario_id FROM usuarios_instituciones WHERE institucion_id = ?)) AND ? > 0 ORDER BY apellido, nombre");
+$stmt->execute([$miInstitucionId, $userId, $miInstitucionId, $miInstitucionId, $miInstitucionId]);
 $usuarios = $stmt->fetchAll();
 ?>
 <?php include __DIR__ . '/views/header.php'; ?>

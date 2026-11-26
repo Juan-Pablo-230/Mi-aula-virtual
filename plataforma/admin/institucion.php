@@ -17,13 +17,21 @@ $tab = $_GET['tab'] ?? 'usuarios';
 if (!in_array($tab, ['usuarios', 'importacion', 'estadisticas'])) $tab = 'usuarios';
 
 $usuarios = $pdo->prepare("
-    SELECT u.*
+    SELECT u.*, (ui.usuario_id IS NOT NULL) AS es_secundario, ui.rol AS rol_aca,
+           (SELECT i2.nombre FROM instituciones i2 WHERE i2.id = u.institucion_id) AS inst_principal
     FROM usuarios u
-    WHERE u.institucion_id = ?
+    LEFT JOIN usuarios_instituciones ui ON ui.usuario_id = u.id AND ui.institucion_id = ?
+    WHERE u.institucion_id = ? OR ui.usuario_id IS NOT NULL
     ORDER BY u.rol, u.apellido, u.nombre
 ");
-$usuarios->execute([$institucionId]);
+$usuarios->execute([$institucionId, $institucionId]);
 $usuarios = $usuarios->fetchAll();
+// Personal de otra institución que también trabaja acá: se muestra con el rol que tiene EN esta institución
+foreach ($usuarios as &$uRol) {
+    $uRol['es_secundario'] = (int)$uRol['es_secundario'];
+    if ($uRol['es_secundario']) $uRol['rol'] = $uRol['rol_aca'];
+}
+unset($uRol);
 // Un alumno puede tener varias cursadas a la vez en la institución
 $cursadasPorAlumno = AcademicModel::cursadasPorAlumno($pdo, $institucionId);
 foreach ($usuarios as &$uCur) $uCur['cursadas'] = $cursadasPorAlumno[(int)$uCur['id']] ?? [];
@@ -58,8 +66,9 @@ $asignacionesDocentes = [];
 $stmt = $pdo->prepare("
     SELECT ad.docente_id, ad.materia_id, ad.division_id
     FROM asignaciones_docente ad
-    JOIN usuarios u ON u.id = ad.docente_id
-    WHERE u.institucion_id = ?
+    JOIN divisiones dv ON dv.id = ad.division_id
+    JOIN asignaciones asg ON asg.id = dv.asignacion_id
+    WHERE asg.institucion_id = ?
 ");
 $stmt->execute([$institucionId]);
 foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
@@ -180,7 +189,7 @@ $hastaEsc = h($hasta);
                     <?php foreach ($usuarios as $u): ?>
                         <tr>
                             <td><?php if ($u['rol'] === 'alumno'): ?><input type="checkbox" class="chk-pasar-inst" value="<?= (int)$u['id'] ?>" onchange="contarPasarInst()"><?php endif; ?></td>
-                            <td><?= h(nombreCompleto($u)) ?></td>
+                            <td><?= h(nombreCompleto($u)) ?><?php if (!empty($u['es_secundario'])): ?> <span class="badge-otra-inst" title="Su institución principal es <?= h($u['inst_principal'] ?? '—') ?>">también en <?= h($u['inst_principal'] ?? '—') ?></span><?php endif; ?></td>
                             <td><?= h($u['dni']) ?></td>
                             <td><?= h($u['email'] ?? '—') ?></td>
                             <td><?= h(ucfirst($u['rol'])) ?></td>
@@ -202,7 +211,7 @@ $hastaEsc = h($hasta);
                             <td>
                                 <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, 0)'>✏️ Editar</button>
                                 <?php if ($u['id'] != $_SESSION['user_id']): ?>
-                                    <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)">🗑️</button>
+                                    <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>, <?= !empty($u['es_secundario']) ? 'true' : 'false' ?>)" title="<?= !empty($u['es_secundario']) ? 'Quitar de esta institución' : 'Eliminar' ?>">🗑️</button>
                                 <?php endif; ?>
                             </td>
                         </tr>

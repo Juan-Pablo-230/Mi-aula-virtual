@@ -8,6 +8,16 @@ require_once __DIR__ . '/../models/AcademicModel.php';
 $currentUser = Auth::currentUser($pdo);
 $rolActual   = $currentUser['rol'] ?? '';
 
+// Institución activa (nombre completo en la tarjeta del perfil) y lista de instituciones donde trabaja
+$nombreInstActual = '';
+$contextosInst = [];
+if ($currentUser && $rolActual !== 'madre' && !empty($currentUser['institucion_id'])) {
+    $stI = $pdo->prepare("SELECT nombre FROM instituciones WHERE id = ?");
+    $stI->execute([(int)$currentUser['institucion_id']]);
+    $nombreInstActual = (string)$stI->fetchColumn();
+    if (Membresias::esPersonal($rolActual)) $contextosInst = Membresias::contextos($pdo, (int)$currentUser['id']);
+}
+
 // ============================================================
 // Contador de mensajes sin leer (para el badge del header)
 // ============================================================
@@ -100,11 +110,15 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
                 <div class="perfil-texto">
                     <strong><?= h(nombreCompleto($currentUser)) ?></strong>
                     <small><?= h(ucfirst($rolActual)) ?> · DNI <?= h($currentUser['dni']) ?></small>
+                    <?php if ($nombreInstActual !== ''): ?><small class="perfil-inst"><?= h($nombreInstActual) ?></small><?php endif; ?>
                 </div>
                 <img src="<?= h(fotoPerfilUrl($currentUser['foto_perfil'] ?? null)) ?>" alt="" class="avatar">
             </button>
             <div class="dropdown-menu oculto" id="dropdownMenu">
                 <a href="#" onclick="abrirModalPerfil();return false;">✏️ Editar perfil</a>
+                <?php if (count($contextosInst) > 1): ?>
+                    <a href="#" onclick="abrirCambioInstitucion();return false;">🔄 Cambiar institución</a>
+                <?php endif; ?>
                 <?php if ($rolActual === 'madre'): ?>
                     <a href="/plataforma/admin/instituciones.php">🏛️ Administrar plataforma</a>
                 <?php elseif (in_array($rolActual, ['directivo', 'secretario'])): ?>
@@ -118,3 +132,15 @@ if (isset($_SESSION['user_id']) && isset($mongoDB)) {
         </div>
     </div>
 </header>
+<?php if (count($contextosInst) > 1): ?>
+<div class="modal-fondo oculto" id="modalCambioInst">
+    <div class="modal-caja" style="min-width: 340px; max-width: 90vw;">
+        <h3>🔄 ¿A qué institución querés ir?</h3>
+        <div id="listaCambioInst" class="lista-cambio-inst"></div>
+        <div class="modal-acciones">
+            <button type="button" class="btn-secundario" onclick="cerrarModal('modalCambioInst')">Cancelar</button>
+        </div>
+    </div>
+</div>
+<script src="<?= h($verAsset('/assets/js/cambiar-institucion.js')) ?>"></script>
+<?php endif; ?>

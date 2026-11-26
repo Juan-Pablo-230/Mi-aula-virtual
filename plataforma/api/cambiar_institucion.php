@@ -1,5 +1,4 @@
 <?php
-// Cambia la institución con la que trabaja el personal que pertenece a más de una.
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
@@ -7,11 +6,24 @@ require_once __DIR__ . '/../core/Helpers.php';
 header('Content-Type: application/json; charset=utf-8');
 Auth::checkRole(['directivo', 'secretario', 'docente']);
 
-$id = (int)($_POST['institucion_id'] ?? 0);
-$permitidas = array_map('intval', array_column(Auth::institucionesDelPersonal($pdo, (int)$_SESSION['user_id']), 'id'));
-if (!in_array($id, $permitidas, true)) {
-    jsonResponse(['ok' => false, 'mensaje' => 'No pertenecés a esa institución'], 403);
+$userId = (int)$_SESSION['user_id'];
+$contextos = Membresias::contextos($pdo, $userId);
+
+switch ($_GET['action'] ?? '') {
+    case 'listar':
+        jsonResponse(['ok' => true, 'actual' => (int)$_SESSION['institucion_id'], 'instituciones' => $contextos]);
+
+    case 'cambiar':
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') jsonResponse(['ok' => false, 'mensaje' => 'Método inválido'], 405);
+        $destino = (int)($_POST['institucion_id'] ?? 0);
+        foreach ($contextos as $c) {
+            if ($c['institucion_id'] === $destino) {
+                $_SESSION['inst_activa'] = $destino; // checkRole lo valida de nuevo en cada petición
+                jsonResponse(['ok' => true, 'nombre' => $c['nombre'], 'rol' => $c['rol']]);
+            }
+        }
+        jsonResponse(['ok' => false, 'mensaje' => 'No trabajás en esa institución'], 403);
+
+    default:
+        jsonResponse(['ok' => false, 'mensaje' => 'Acción inválida'], 400);
 }
-$_SESSION['inst_activa'] = $id;
-$_SESSION['institucion_id'] = $id;
-jsonResponse(['ok' => true]);

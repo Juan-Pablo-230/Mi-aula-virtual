@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/Security.php';
+require_once __DIR__ . '/Membresias.php';
 
 class Auth {
     // Límites de intentos fallidos de login (ventana deslizante)
@@ -90,6 +91,7 @@ class Auth {
         $_SESSION['rol']            = $user['rol'];
         $_SESSION['nombre']         = $user['nombre'] . ' ' . $user['apellido'];
         $_SESSION['institucion_id'] = $user['institucion_id'] ?? null;
+        $_SESSION['inst_activa']    = (int)($user['institucion_id'] ?? 0);
         $_SESSION['foto_perfil']    = $user['foto_perfil'];
         csrfToken(); // genera el token CSRF de la nueva sesión
         $_SESSION['pw_firma']         = self::firmaPassword((string)$user['password_hash']);
@@ -170,10 +172,13 @@ class Auth {
             self::sesionInvalida('Tu contraseña cambió. Iniciá sesión de nuevo.', 401);
         }
         $_SESSION['pw_firma'] = $firma;
-        $_SESSION['rol']            = $u['rol'];
-        $_SESSION['institucion_id'] = $u['institucion_id'];
+        // Institución activa (si trabaja en varias): rol e institución efectivos de esta petición
+        [$rolEfectivo, $instEfectiva] = Membresias::resolver($pdo, (int)$_SESSION['user_id'], (string)$u['rol'], (int)$u['institucion_id'], (int)($_SESSION['inst_activa'] ?? 0));
+        $_SESSION['rol']            = $rolEfectivo;
+        $_SESSION['institucion_id'] = $instEfectiva ?: null;
+        $_SESSION['inst_activa']    = $instEfectiva;
 
-        if (!in_array($u['rol'], $rolesPermitidos, true)) {
+        if (!in_array($rolEfectivo, $rolesPermitidos, true)) {
             self::sesionInvalida('No tenés permiso para esta acción.', 403);
         }
 
@@ -194,6 +199,12 @@ class Auth {
         if (!isset($_SESSION['user_id'])) return null;
         $stmt = $pdo->prepare("SELECT id, nombre, apellido, dni, email, rol, institucion_id, foto_perfil FROM usuarios WHERE id = ?");
         $stmt->execute([$_SESSION['user_id']]);
-        return $stmt->fetch() ?: null;
+        $u = $stmt->fetch() ?: null;
+        // Rol e institución de la sesión (institución activa si trabaja en varias)
+        if ($u && isset($_SESSION['rol']) && (int)$u['id'] === (int)$_SESSION['user_id']) {
+            $u['rol'] = $_SESSION['rol'];
+            $u['institucion_id'] = $_SESSION['institucion_id'] ?? $u['institucion_id'];
+        }
+        return $u;
     }
 }

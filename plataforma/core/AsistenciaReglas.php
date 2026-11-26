@@ -62,8 +62,8 @@ class AsistenciaReglas {
         $orden = " ORDER BY asg.nombre, d.nombre";
         if ($u['rol'] === 'docente') {
             $st = $pdo->prepare("$base JOIN asignaciones_docente ad ON ad.division_id = d.id
-                                 WHERE asg.asistencia_por_dia = 1 AND ad.docente_id = ?" . $orden);
-            $st->execute([$u['id']]);
+                                 WHERE asg.asistencia_por_dia = 1 AND ad.docente_id = ? AND asg.institucion_id = ?" . $orden);
+            $st->execute([$u['id'], (int)($u['inst'] ?? 0)]);
         } elseif ($u['rol'] === 'madre') {
             $st = $pdo->query("$base WHERE asg.asistencia_por_dia = 1" . $orden);
         } else {

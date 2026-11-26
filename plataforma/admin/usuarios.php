@@ -38,13 +38,21 @@ $divisiones->execute([$miInstitucionId]);
 $divisiones = $divisiones->fetchAll();
 
 $stmt = $pdo->prepare("
-    SELECT u.*
+    SELECT u.*, (ui.usuario_id IS NOT NULL) AS es_secundario, ui.rol AS rol_aca,
+           (SELECT i2.nombre FROM instituciones i2 WHERE i2.id = u.institucion_id) AS inst_principal
     FROM usuarios u
-    WHERE u.institucion_id = ?
+    LEFT JOIN usuarios_instituciones ui ON ui.usuario_id = u.id AND ui.institucion_id = ?
+    WHERE u.institucion_id = ? OR ui.usuario_id IS NOT NULL
     ORDER BY u.rol, u.apellido, u.nombre
 ");
-$stmt->execute([$miInstitucionId]);
+$stmt->execute([$miInstitucionId, $miInstitucionId]);
 $usuarios = $stmt->fetchAll();
+// Personal de otra institución que también trabaja acá: se muestra con el rol que tiene EN esta institución
+foreach ($usuarios as &$uRol) {
+    $uRol['es_secundario'] = (int)$uRol['es_secundario'];
+    if ($uRol['es_secundario']) $uRol['rol'] = $uRol['rol_aca'];
+}
+unset($uRol);
 // Un alumno puede tener varias cursadas a la vez en la institución
 $cursadasPorAlumno = AcademicModel::cursadasPorAlumno($pdo, $miInstitucionId);
 foreach ($usuarios as &$uCur) $uCur['cursadas'] = $cursadasPorAlumno[(int)$uCur['id']] ?? [];
@@ -194,7 +202,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
                                 <input type="checkbox" class="chk-alumno" value="<?= (int)$u['id'] ?>" onchange="actualizarContador()">
                             <?php endif; ?>
                         </td><?php endif; ?>
-                        <td><?= h(nombreCompleto($u)) ?></td>
+                        <td><?= h(nombreCompleto($u)) ?><?php if (!empty($u['es_secundario'])): ?> <span class="badge-otra-inst" title="Su institución principal es <?= h($u['inst_principal'] ?? '—') ?>">también en <?= h($u['inst_principal'] ?? '—') ?></span><?php endif; ?></td>
                         <td><?= h($u['dni']) ?></td>
                         <td><?= h($u['email'] ?? '—') ?></td>
                         <td><?= h(ucfirst($u['rol'])) ?></td>
@@ -222,7 +230,7 @@ foreach ($stmt as $row) $asignacionesDocentes[$row['docente_id']][] = $row;
                         <td>
                             <button type="button" class="btn-secundario" onclick='abrirEditar(<?= htmlspecialchars(json_encode($u), ENT_QUOTES) ?>, <?= jsonJs($asignacionesDocentes[$u['id']] ?? []) ?>, 0)'>✏️ Editar</button>
                             <?php if ($u['id'] != $_SESSION['user_id']): ?>
-                                <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>)" title="Eliminar">🗑️</button>
+                                <button type="button" class="btn-peligro-sm" onclick="eliminarUsuario(<?= $u['id'] ?>, <?= !empty($u['es_secundario']) ? 'true' : 'false' ?>)" title="<?= !empty($u['es_secundario']) ? 'Quitar de esta institución' : 'Eliminar' ?>">🗑️</button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -562,6 +570,30 @@ function actualizarAsignacionForm() {
     }
 }
 
+
+// Personal que trabaja en varias instituciones: sus datos personales los gestiona su institución principal.
+function bloquearDatosPersonales(bloquear) {
+    ['userNombre', 'userApellido', 'userDni', 'userEmail'].forEach(id => { const el = document.getElementById(id); if (el) el.readOnly = bloquear; });
+    const act = document.getElementById('userActivo'); if (act) act.disabled = bloquear;
+    let nota = document.getElementById('notaSecundario');
+    if (bloquear && !nota) {
+        nota = document.createElement('p');
+        nota.id = 'notaSecundario'; nota.className = 'alerta info'; nota.style.fontSize = '0.85rem';
+        nota.textContent = 'Esta persona trabaja también en otra institución: sus datos personales los edita su institución principal. Acá podés cambiar sus asignaciones.';
+        document.getElementById('userNombre').closest('label').before(nota);
+    }
+    if (nota) nota.style.display = bloquear ? 'block' : 'none';
+}
+
+// El DNI ya es de personal de otra institución: preguntar si se lo suma a esta (con el rol elegido)
+async function confirmarAgregarPersonal(d, rol, url, fd) {
+    const donde = (d.instituciones || []).map(i => i.nombre + ' (' + i.rol + ')').join(', ');
+    if (!confirm(d.persona + ' ya trabaja en: ' + donde + '.\n\n¿Querés sumarla/o también a esta institución como ' + rol + '?')) return null;
+    fd.set('agregar_personal', '1');
+    const r = await fetchConSesion(url, { method: 'POST', body: fd });
+    return r.json();
+}
+
 // El rol es de solo lectura: fijo según la pestaña al crear, y no se puede cambiar al editar.
 // Solo en "Personal" se elige entre los roles del personal.
 function configurarRolSelect(rol, esEdicion) {
@@ -592,6 +624,7 @@ function abrirModalCrear(rolInicial) {
     divisionActual = 0;
     cursadasActuales = [];
     configurarRolSelect(rolInicial || '', false);
+    bloquearDatosPersonales(false);
     if (rolInicial) actualizarAsignacionForm();
     document.getElementById('modalUser').classList.remove('oculto');
 }
@@ -604,6 +637,7 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('userDni').value = u.dni;
     document.getElementById('userEmail').value = u.email || '';
     configurarRolSelect(u.rol, true);
+    bloquearDatosPersonales(Number(u.es_secundario) === 1);
     document.getElementById('userNombre').required = u.rol !== 'familiar';
     document.getElementById('campoPasswordInfo').style.display = 'none';
     document.getElementById('campoActivo').style.display = 'block';
@@ -639,8 +673,13 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
     btn.textContent = 'Guardando...';
     try {
         const r = await fetchConSesion(url, { method: 'POST', body: fd });
-        const d = await r.json();
-        if (d.ok) { mostrarToast(isEdit ? 'Usuario actualizado' : 'Usuario creado', 'ok'); setTimeout(() => location.reload(), 700); }
+        let d = await r.json();
+        if (d.codigo === 'personal_otra_institucion') {
+            const d2 = await confirmarAgregarPersonal(d, rol, url, fd);
+            if (d2 === null) { btn.disabled = false; btn.textContent = 'Crear'; return; }
+            d = d2;
+        }
+        if (d.ok) { mostrarToast(isEdit ? 'Usuario actualizado' : (d.agregado ? 'Agregado a tu institución' : 'Usuario creado'), 'ok'); setTimeout(() => location.reload(), 700); }
         else if (d.codigo === 'otra_institucion') {
             btn.disabled = false; btn.textContent = 'Crear';
             solicitudActual = d;
@@ -661,8 +700,8 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
     }
 });
 
-async function eliminarUsuario(id) {
-    if (!confirm('¿Eliminar este usuario?')) return;
+async function eliminarUsuario(id, secundario) {
+    if (!confirm(secundario ? '¿Quitar a esta persona de tu institución? Su cuenta sigue existiendo en la otra institución.' : '¿Eliminar este usuario?')) return;
     const fd = new FormData(); fd.append('id', id);
     try {
         const r = await fetchConSesion(API + '?action=eliminar', { method: 'POST', body: fd });

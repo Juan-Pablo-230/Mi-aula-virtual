@@ -12,7 +12,7 @@ $puedeSubir = in_array($rol, ['docente', 'directivo', 'secretario', 'madre']);
 if ($rol === 'alumno') $materias = AcademicModel::materiasAlumno($pdo, (int)$user['id']);
 elseif ($rol === 'familiar') $materias = AcademicModel::materiasDeFamiliar($pdo, (int)$user['id']);
 elseif ($rol === 'docente') {
-    $stmt = $pdo->prepare("SELECT DISTINCT m.id, m.nombre FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ? ORDER BY m.nombre");
+    $stmt = $pdo->prepare("SELECT DISTINCT m.id, m.nombre FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ?" . sqlMateriaDeInstActiva('m.id') . " ORDER BY m.nombre");
     $stmt->execute([$user['id']]); $materias = $stmt->fetchAll();
 } elseif ($rol === 'madre') {
     $materias = $pdo->query("SELECT id, nombre FROM materias ORDER BY nombre")->fetchAll();

@@ -51,7 +51,7 @@ if ($rol === 'alumno') {
     $materias = array_values($materias);
     $divisionesEnAño = array_values(array_unique($divisionesEnAño));
 } elseif ($rol === 'docente') {
-    $stmt = $pdo->prepare("SELECT m.id, m.nombre, GROUP_CONCAT(DISTINCT ad.division_id) AS divisiones FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ? GROUP BY m.id, m.nombre ORDER BY m.nombre");
+    $stmt = $pdo->prepare("SELECT m.id, m.nombre, GROUP_CONCAT(DISTINCT ad.division_id) AS divisiones FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ?" . sqlMateriaDeInstActiva('m.id') . " GROUP BY m.id, m.nombre ORDER BY m.nombre");
     $stmt->execute([$user['id']]);
     $filas = $stmt->fetchAll();
     $materias = [];
@@ -83,7 +83,7 @@ foreach ($stmt as $row) $divisionesPorCurso[] = $row;
 
 $divisionesDocentePorMateria = [];
 if ($rol === 'docente') {
-    $stmt = $pdo->prepare("SELECT materia_id, division_id FROM asignaciones_docente WHERE docente_id = ?");
+    $stmt = $pdo->prepare("SELECT materia_id, division_id FROM asignaciones_docente WHERE docente_id = ?" . sqlMateriaDeInstActiva('materia_id'));
     $stmt->execute([$user['id']]);
     foreach ($stmt as $row) $divisionesDocentePorMateria[(int)$row['materia_id']][] = (int)$row['division_id'];
 }

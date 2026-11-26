@@ -48,6 +48,19 @@ CREATE TABLE usuarios (
         FOREIGN KEY (institucion_id) REFERENCES instituciones(id) ON DELETE SET NULL
 );
 
+-- Personal que trabaja en más de una institución, con un rol distinto en cada una.
+-- La institución/rol principal está en usuarios; las demás, acá.
+CREATE TABLE usuarios_instituciones (
+    usuario_id INT NOT NULL,
+    institucion_id INT NOT NULL,
+    rol ENUM('directivo','secretario','docente') NOT NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (usuario_id, institucion_id),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (institucion_id) REFERENCES instituciones(id) ON DELETE CASCADE,
+    KEY idx_ui_inst (institucion_id)
+);
+
 CREATE TABLE familiares_alumnos (
     familiar_id INT NOT NULL,
     alumno_id INT NOT NULL,
