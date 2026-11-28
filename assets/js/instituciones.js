@@ -21,8 +21,27 @@ async function cargarPaises() {
     }
 }
 
+// Si no hay lista de localidades (API sin acceso), se escribe a mano
+function localidadComoTexto() {
+    const el = document.getElementById('instLocalidad');
+    if (el && el.tagName === 'INPUT') { el.disabled = false; return; }
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.name = 'localidad'; inp.id = 'instLocalidad'; inp.required = true; inp.maxlength = 150;
+    inp.placeholder = 'Escribí la localidad';
+    el.replaceWith(inp);
+}
+
+function localidadComoSelect() {
+    const el = document.getElementById('instLocalidad');
+    if (el && el.tagName === 'SELECT') return el;
+    const sel = document.createElement('select');
+    sel.name = 'localidad'; sel.id = 'instLocalidad'; sel.required = true;
+    el.replaceWith(sel);
+    return sel;
+}
+
 async function cargarLocalidades(pais) {
-    const sel = document.getElementById('instLocalidad');
+    const sel = localidadComoSelect();
     sel.disabled = true;
     if (!pais) { sel.innerHTML = '<option value="">— Elegí primero el país —</option>'; return; }
     sel.innerHTML = '<option value="">Cargando localidades…</option>';
@@ -30,13 +49,13 @@ async function cargarLocalidades(pais) {
         const r = await fetchConSesion(API_GEO + '?action=localidades&pais=' + encodeURIComponent(pais));
         const d = await r.json();
         if (!d.ok) throw new Error(d.mensaje || 'Error');
+        if (d.manual || !(d.localidades || []).length) { localidadComoTexto(); return; }
         sel.innerHTML = '<option value="">— Elegí una localidad —</option>';
         d.localidades.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; sel.appendChild(o); });
         sel.disabled = false;
     } catch (ex) {
         if (ex.message === 'Sesión expirada') return;
-        sel.innerHTML = '<option value="">Sin localidades disponibles</option>';
-        mostrarToast(ex.message, 'error');
+        localidadComoTexto();
     }
 }
 

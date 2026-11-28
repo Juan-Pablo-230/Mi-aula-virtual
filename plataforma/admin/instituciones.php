@@ -4,14 +4,6 @@ require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
 
 Auth::checkRole(['madre']);
-$instituciones = $pdo->query("
-    SELECT i.*,
-           (SELECT COUNT(*) FROM usuarios u WHERE u.institucion_id = i.id) AS cant_usuarios,
-           (SELECT CONCAT_WS(', ', u.apellido, u.nombre) FROM usuarios u
-              WHERE u.institucion_id = i.id AND u.rol IN ('directivo','secretario')
-              ORDER BY u.id LIMIT 1) AS duenio
-    FROM instituciones i ORDER BY i.nombre
-")->fetchAll();
 ?>
 <?php include __DIR__ . '/../views/header.php'; ?>
 <?php include __DIR__ . '/../views/menu.php'; ?>
@@ -50,34 +42,6 @@ $instituciones = $pdo->query("
         </form>
     </div>
 
-    <div class="panel-vidrio">
-        <h3>Existentes</h3>
-        <?php if (empty($instituciones)): ?>
-            <p class="alerta info">Sin instituciones creadas.</p>
-        <?php else: ?>
-            <table class="tabla-alumnos">
-                <thead>
-                    <tr><th>Nombre</th><th>Dueño</th><th>Dirección</th><th>Teléfono</th><th>Email</th><th>Usuarios</th><th>Acciones</th></tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($instituciones as $i): ?>
-                        <tr>
-                            <td><?= h($i['nombre']) ?></td>
-                            <td><?= $i['duenio'] ? h($i['duenio']) : '<em style="color:#a5c3e8;">—</em>' ?></td>
-                            <td><?= h($i['direccion'] ?? '—') ?></td>
-                            <td><?= h($i['telefono'] ?? '—') ?></td>
-                            <td><?= h($i['email'] ?? '—') ?></td>
-                            <td><?= (int)$i['cant_usuarios'] ?></td>
-                            <td style="white-space:nowrap;">
-                                <a class="btn-secundario" href="/plataforma/admin/institucion.php?id=<?= (int)$i['id'] ?>">⚙️ Gestionar</a>
-                                <button type="button" class="btn-peligro-sm" onclick="eliminarInstitucion(<?= (int)$i['id'] ?>, '<?= h(addslashes($i['nombre'])) ?>')">🗑️</button>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
-    </div>
 </main>
 <script src="/assets/js/instituciones.js"></script>
 <?php include __DIR__ . '/../views/footer.php'; ?>

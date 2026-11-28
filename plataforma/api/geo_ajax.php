@@ -16,7 +16,8 @@ switch ($_GET['action'] ?? '') {
         $pais = trim($_GET['pais'] ?? '');
         if ($pais === '' || !Geo::buscarPais($pais)) jsonResponse(['ok' => false, 'mensaje' => 'País inválido'], 400);
         $l = Geo::localidades($pais);
-        if (!$l) jsonResponse(['ok' => false, 'mensaje' => 'No se encontraron localidades para ese país.'], 404);
+        // Sin lista disponible (API caída o sin localidades): la pantalla pasa a escritura manual
+        if (!$l) jsonResponse(['ok' => true, 'localidades' => [], 'manual' => true]);
         jsonResponse(['ok' => true, 'localidades' => $l]);
     default:
         jsonResponse(['ok' => false, 'mensaje' => 'Acción inválida'], 400);

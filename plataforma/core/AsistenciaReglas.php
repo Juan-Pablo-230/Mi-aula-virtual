@@ -84,33 +84,63 @@ class AsistenciaReglas {
     }
 
     /**
-     * Una materia de un curso por día completo puede llevar asistencia propia que SÍ cuenta para quedar libre
-     * (regla de la materia). Si no, la asistencia por materia de esos cursos se guarda y se muestra, pero se ignora al contar.
+     * Materias con asistencia propia dentro de un curso por día completo: sus faltas SE SUMAN al total general del curso.
+     * Se define al crear la materia: asistencia_propia y valor_falta_propia (cuánto suma cada falta).
+     * @return array<int,array{nombre:string,peso:float}> materia_id => datos
      */
-    public static function materiaCuentaEnCursoCompleto($mongoDB, int $materiaId): bool {
-        if ($materiaId <= 0) return false;
-        $r = $mongoDB->selectCollection('reglas_asistencia')->findOne(['materia_id' => $materiaId]);
-        return $r && !empty($r['cuenta_en_curso_completo']);
+    public static function materiasPropias(PDO $pdo): array {
+        static $cache = null;
+        if ($cache !== null) return $cache;
+        $cache = [];
+        try {
+            foreach ($pdo->query("SELECT id, nombre, valor_falta_propia FROM materias WHERE asistencia_propia = 1") as $m) {
+                $cache[(int)$m['id']] = ['nombre' => $m['nombre'], 'peso' => (float)$m['valor_falta_propia']];
+            }
+        } catch (Throwable $e) { /* columnas aún no migradas */ }
+        return $cache;
+    }
+
+    /** Cuánto suma cada falta de la materia al total general (null si no lleva asistencia propia). */
+    public static function pesoPropio(PDO $pdo, int $materiaId): ?float {
+        $p = self::materiasPropias($pdo)[$materiaId] ?? null;
+        return $p ? $p['peso'] : null;
     }
 
     /**
      * Faltas acumuladas por alumno (con fracciones en el modo por día) que cuentan para el tope.
+     * - Materia (clave > 0): solo la asistencia en cursos por materia; en un curso por día completo la materia
+     *   no tiene tope propio: suma al total general si lleva asistencia propia.
+     * - General (clave 0): faltas del día completo + faltas de las materias con asistencia propia × lo que suma cada una.
      * @return array<int,float> alumno_id => faltas
      */
     public static function faltasPorAlumno(PDO $pdo, $mongoDB, array $alumnoIds, int $claveMateria): array {
         $alumnoIds = array_values(array_unique(array_map('intval', $alumnoIds)));
         if (!$alumnoIds) return [];
+        $col = $mongoDB->selectCollection('asistencia');
+        $dia = self::divisionesDiaIds($pdo);
         $match = ['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $alumnoIds], 'estado' => 'ausente'];
-        if ($claveMateria > 0 && !self::materiaCuentaEnCursoCompleto($mongoDB, $claveMateria)) {
-            $dia = self::divisionesDiaIds($pdo);
-            if ($dia) $match['division_id'] = ['$nin' => $dia];   // curso por día completo: la materia no computa
-        }
+        if ($claveMateria > 0 && $dia) $match['division_id'] = ['$nin' => $dia];
         $out = [];
-        $rows = $mongoDB->selectCollection('asistencia')->aggregate([
+        $rows = $col->aggregate([
             ['$match' => $match],
             ['$group' => ['_id' => '$alumno_id', 'total' => ['$sum' => ['$ifNull' => ['$valor_falta', 1]]]]],
         ]);
         foreach ($rows as $r) $out[(int)$r['_id']] = (float)$r['total'];
+
+        if ($claveMateria === self::MATERIA_DIA && $dia) {
+            $propias = self::materiasPropias($pdo);
+            if ($propias) {
+                $rows = $col->aggregate([
+                    ['$match' => ['materia_id' => ['$in' => array_keys($propias)], 'alumno_id' => ['$in' => $alumnoIds],
+                                  'estado' => 'ausente', 'division_id' => ['$in' => $dia]]],
+                    ['$group' => ['_id' => ['a' => '$alumno_id', 'm' => '$materia_id'], 'n' => ['$sum' => 1]]],
+                ]);
+                foreach ($rows as $r) {
+                    $aid = (int)$r['_id']['a']; $mid = (int)$r['_id']['m'];
+                    $out[$aid] = ($out[$aid] ?? 0.0) + (int)$r['n'] * ($propias[$mid]['peso'] ?? 0.0);
+                }
+            }
+        }
         return $out;
     }
 

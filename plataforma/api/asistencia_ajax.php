@@ -26,6 +26,16 @@ $colTopesAlumno = $mongoDB->selectCollection('topes_alumno');
 // ============================================================
 // HELPER: calcular faltas y evaluar libre
 // ============================================================
+/**
+ * Tras guardar la asistencia de una MATERIA en un curso por día completo: si la materia lleva asistencia propia,
+ * sus faltas suman al total general del curso, así que hay que reevaluar el LIBRE general (clave 0).
+ */
+function evaluarGeneralTrasMateria(PDO $pdo, $mongoDB, int $alumnoId, int $materiaId, int $divisionId): ?array {
+    if ($materiaId <= 0 || AsistenciaReglas::pesoPropio($pdo, $materiaId) === null) return null;
+    if (!AsistenciaReglas::divisionPorDia($pdo, $divisionId)) return null;
+    return evaluarLibre($pdo, $mongoDB, $alumnoId, 0, AsistenciaReglas::asignacionDeDivision($pdo, $divisionId));
+}
+
 function evaluarLibre(PDO $pdo, $mongoDB, int $alumnoId, int $materiaId, int $asigId = 0): array {
     $colAsistencia  = $mongoDB->selectCollection('asistencia');
     $colLibres      = $mongoDB->selectCollection('alumno_libre');
@@ -180,6 +190,8 @@ try {
 
         // Evaluar libre
         $resultado = evaluarLibre($pdo, $mongoDB, $alumnoId, $materiaId, $amb['asigId']);
+        $general = evaluarGeneralTrasMateria($pdo, $mongoDB, $alumnoId, $materiaId, (int)$divisionId);
+        if ($general && $general['libre']) $resultado['libre'] = true;
         if ($resultado['libre'] && $estado === 'ausente') {
             $stmt = $pdo->prepare("SELECT nombre, apellido FROM usuarios WHERE id = ?");
             $stmt->execute([$alumnoId]);
@@ -228,6 +240,8 @@ try {
             );
 
             $resultado = evaluarLibre($pdo, $mongoDB, $alumnoId, $materiaId, $amb['asigId']);
+            $general = evaluarGeneralTrasMateria($pdo, $mongoDB, $alumnoId, $materiaId, (int)$divisionId);
+            if ($general && $general['libre']) $resultado['libre'] = true;
             jsonResponse([
                 'ok' => true,
                 'libre' => $resultado['libre'],
@@ -264,8 +278,6 @@ try {
                 ]);
             } else {
                 $set = ['faltas_maximas' => $faltasMax];
-                // La materia lleva asistencia propia que cuenta para quedar libre aunque su curso sea por día completo
-                if (isset($_POST['cuenta_en_curso_completo'])) $set['cuenta_en_curso_completo'] = $_POST['cuenta_en_curso_completo'] === '1';
                 $colReglas->updateOne(
                     ['materia_id' => $materiaId],
                     ['$set' => $set],
@@ -276,20 +288,6 @@ try {
             // Reevaluar a quienes ya tienen faltas (si bajó el tope, pueden quedar libres)
             foreach ($conFaltas as $aid) evaluarLibre($pdo, $mongoDB, (int)$aid, $materiaId, $amb['asigId']);
             jsonResponse(['ok' => true]);
-            break;
-
-        // ============================================================
-        // ASISTENCIA PROPIA DE LA MATERIA en un curso por día completo (docente, secretario, directivo, madre)
-        // ============================================================
-        case 'asistencia_propia':
-            $amb       = resolverAmbito($pdo, $yo);
-            $materiaId = $amb['materiaId'];
-            if ($amb['dia'] || $materiaId <= 0) jsonResponse(['ok' => false, 'mensaje' => 'Elegí una materia'], 400);
-            $propia = ($_POST['cuenta_en_curso_completo'] ?? '0') === '1';
-            $colReglas->updateOne(['materia_id' => $materiaId], ['$set' => ['cuenta_en_curso_completo' => $propia]], ['upsert' => true]);
-            $conFaltas = $colAsistencia->distinct('alumno_id', ['materia_id' => $materiaId, 'estado' => 'ausente']);
-            foreach ($conFaltas as $aid) evaluarLibre($pdo, $mongoDB, (int)$aid, $materiaId, $amb['asigId']);
-            jsonResponse(['ok' => true, 'propia' => $propia]);
             break;
 
         // ============================================================

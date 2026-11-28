@@ -7,8 +7,11 @@
 class Geo {
     private const TTL = 2592000; // 30 días
 
+    /** Último error de red (para diagnosticar: sin internet, SSL sin certificados, curl faltante...). */
+    public static ?string $ultimoError = null;
+
     private static function http(string $url, ?array $postJson = null): ?array {
-        if (!function_exists('curl_init')) return null;
+        if (!function_exists('curl_init')) { self::$ultimoError = 'Falta la extensión curl de PHP'; return null; }
         $ch = curl_init($url);
         $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8,
                  CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3, CURLOPT_PROTOCOLS => CURLPROTO_HTTPS | CURLPROTO_HTTP,
@@ -18,11 +21,20 @@ class Geo {
             $opts[CURLOPT_POSTFIELDS] = json_encode($postJson);
             $opts[CURLOPT_HTTPHEADER][] = 'Content-Type: application/json';
         }
+        // Certificados: en servidores locales (XAMPP/Windows) suele faltar el bundle de CA; se busca uno conocido
+        $ca = ini_get('curl.cainfo') ?: ini_get('openssl.cafile');
+        if (!$ca || !is_file($ca)) {
+            foreach ([getenv('GEO_CA_BUNDLE') ?: '', '/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', 'C:/xampp/apache/bin/curl-ca-bundle.crt', 'C:/xampp/php/extras/ssl/cacert.pem', 'C:/laragon/etc/ssl/cacert.pem'] as $c) {
+                if ($c !== '' && is_file($c)) { $opts[CURLOPT_CAINFO] = $c; break; }
+            }
+        }
         curl_setopt_array($ch, $opts);
         $body = curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($body === false) self::$ultimoError = curl_error($ch);
+        elseif ($code !== 200) self::$ultimoError = 'HTTP ' . $code;
         curl_close($ch);
-        if ($body === false || $code !== 200) return null;
+        if ($body === false || $code !== 200) { error_log('Geo: ' . $url . ' -> ' . self::$ultimoError); return null; }
         $d = json_decode($body, true);
         return is_array($d) ? $d : null;
     }
@@ -47,6 +59,11 @@ class Geo {
 
     /** @return array<int,array{valor:string,nombre:string}> valor = nombre común (inglés), nombre = español */
     public static function paises(): ?array {
+        $p = self::paisesApi();
+        return $p ?: (require __DIR__ . '/GeoPaisesRespaldo.php');   // sin API: lista incorporada
+    }
+
+    private static function paisesApi(): ?array {
         return self::cache('paises', function () {
             $d = self::http('https://restcountries.com/v3.1/all?fields=name,translations');
             if (!$d) return null;

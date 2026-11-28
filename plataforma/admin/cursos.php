@@ -136,6 +136,14 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                         <?php endforeach; ?>
                     </select>
                 </label>
+                <label style="display:block;">
+                    <input type="checkbox" name="asistencia_propia" value="1" id="crearMatPropia" onchange="document.getElementById('crearMatPeso').disabled = !this.checked">
+                    Lleva asistencia propia (suma al total del curso aunque el curso tome asistencia por día completo)
+                </label>
+                <label>Cuánto suma cada falta de esta materia
+                    <input type="number" name="valor_falta_propia" id="crearMatPeso" value="1" min="0.25" max="10" step="0.25" disabled>
+                    <small style="color:#a5c3e8; display:block;">Por ejemplo 0,5 si cada inasistencia en Educación física vale media falta del total acumulado. Solo se aplica en cursos por día completo.</small>
+                </label>
                 <label>Cursos específicos <span style="color:#fca5a5;">*</span>
                     <small style="color:#a5c3e8; font-size:0.75rem; display:block; margin-bottom:0.35rem;">
                         Obligatorio: marcá al menos un curso donde aplica esta materia.
@@ -226,6 +234,7 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                     <h3><?= h($a['nombre']) ?> <small style="color:#cfe2ff;">(<?= h($a['nivel']) ?>)</small></h3>
                     <div class="curso-acciones">
+                        <button type="button" class="btn-secundario" onclick='abrirAlumnosCurso(<?= (int)$a['id'] ?>, <?= jsonJs($a['nombre']) ?>)'>👥 Transferir alumnos</button>
                         <button type="button" class="btn-secundario" onclick="abrirEditarCurso(<?= (int)$a['id'] ?>)">✏️ Editar curso</button>
                         <button type="button" class="btn-secundario" onclick="duplicarAsignacion(<?= $a['id'] ?>)">📋 Duplicar</button>
                         <button type="button" class="btn-peligro" onclick="eliminarAsignacion(<?= $a['id'] ?>)">🗑️ Eliminar</button>
@@ -296,7 +305,15 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                     <?php endforeach; ?>
                 </select>
             </label>
-            <label>Cursos específicos <span style="color:#fca5a5;">*</span>
+            <label style="display:block;">
+                    <input type="checkbox" name="asistencia_propia" value="1" id="editMatPropia" onchange="document.getElementById('editMatPeso').disabled = !this.checked">
+                    Lleva asistencia propia (suma al total del curso aunque el curso tome asistencia por día completo)
+                </label>
+                <label>Cuánto suma cada falta de esta materia
+                    <input type="number" name="valor_falta_propia" id="editMatPeso" value="1" min="0.25" max="10" step="0.25" disabled>
+                    <small style="color:#a5c3e8; display:block;">Por ejemplo 0,5 si cada inasistencia en Educación física vale media falta del total acumulado. Solo se aplica en cursos por día completo.</small>
+                </label>
+                <label>Cursos específicos <span style="color:#fca5a5;">*</span>
                 <small style="color:#a5c3e8; font-size:0.75rem; display:block; margin-bottom:0.35rem;">
                     Obligatorio: marcá al menos un curso donde aplica esta materia.
                 </small>
@@ -358,10 +375,10 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                     <option value="<?= $o['id'] ?>"><?= h($o['nombre']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <button type="submit" class="btn-secundario">➕ Agregar a la lista</button>
+            <button type="submit" class="btn-secundario">➕ Agregar división</button>
         </form>
 
-        <small style="color:#a5c3e8; display:block; margin-top:0.75rem;">Los cambios (nombre, asistencia y divisiones) se aplican todos juntos al tocar <strong>Guardar cambios</strong>.</small>
+        <small style="color:#a5c3e8; display:block; margin-top:0.75rem;">Las divisiones nuevas se guardan al instante con <strong>➕ Agregar división</strong>. El nombre, la asistencia y las divisiones que quites se aplican al tocar <strong>Guardar cambios</strong>.</small>
         <div id="ecError" class="alerta danger" style="display:none;"></div>
         <div class="modal-acciones">
             <button type="button" class="btn-secundario" onclick="cerrarEditarCurso()">Cerrar</button>
@@ -412,6 +429,16 @@ foreach ($stmt as $m) $materiasPorAsignacion[(int)$m['asignacion_id']][] = $m;
                 <button type="submit" class="btn-primario" id="btnDuplicar">Duplicar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="modal-fondo oculto" id="modalAlumnosCurso">
+    <div class="modal-caja" style="min-width: 640px; max-width: 95vw; max-height: 92vh; overflow-y:auto;">
+        <h3 id="alumnosCursoTitulo">🔀 Transferir alumnos</h3>
+        <div id="acTabs" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem;"></div>
+        <div id="acPasos" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.8rem;"></div>
+        <div id="acCuerpo"></div>
+        <div class="modal-acciones" id="acAcciones"></div>
     </div>
 </div>
 

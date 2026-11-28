@@ -107,7 +107,12 @@ if ($esAlumno || $esFamiliar) {
 
     // Materias de cursos por día completo: ¿llevan asistencia propia (computa) o solo se informan?
     $propiaMat = [];
-    foreach ($resumenFaltas as $mid => $_) if ($mid > 0) $propiaMat[$mid] = AsistenciaReglas::materiaCuentaEnCursoCompleto($mongoDB, (int)$mid);
+    foreach ($resumenFaltas as $mid => $_) if ($mid > 0) $propiaMat[$mid] = AsistenciaReglas::pesoPropio($pdo, (int)$mid);
+    // Total acumulado del día completo = faltas del día + faltas de materias con asistencia propia × lo que suma cada una
+    $totalGeneral = $resumenFaltas[AsistenciaReglas::MATERIA_DIA] ?? 0.0;
+    $sumaMaterias = 0.0;
+    foreach ($propiaMat as $mid => $peso) if ($peso && isset($resumenFaltas[$mid]) && $hayCursoPorDia) $sumaMaterias += $resumenFaltas[$mid] * $peso;
+    $totalGeneral += $sumaMaterias;
     $matMap = [AsistenciaReglas::MATERIA_DIA => '🗓️ Día completo (todas las materias)'];
     foreach ($materias as $m) $matMap[(int)$m['id']] = $m['nombre'];
 
@@ -154,12 +159,15 @@ if ($esAlumno || $esFamiliar) {
                 <thead><tr><th>Materia / Día</th><th>Faltas</th></tr></thead>
                 <tbody>
                 <?php foreach ($matMap as $mid => $mnombre): if (!isset($resumenFaltas[$mid])) continue; ?>
-                    <tr><td><?= h($mnombre) ?><?php if ($hayCursoPorDia && $mid > 0): ?> <small style="color:#a5c3e8;"><?= !empty($propiaMat[$mid]) ? '(asistencia propia: cuenta para quedar libre)' : '(informativa)' ?></small><?php endif; ?></td><td><strong><?= h(AsistenciaReglas::fmtFaltas($resumenFaltas[$mid])) ?></strong></td></tr>
+                    <tr><td><?= h($mnombre) ?><?php if ($hayCursoPorDia && $mid > 0): ?> <small style="color:#a5c3e8;"><?= !empty($propiaMat[$mid]) ? '(asistencia propia: cada falta suma ' . h(AsistenciaReglas::fmtFaltas((float)$propiaMat[$mid])) . ' al total del día completo)' : '(informativa)' ?></small><?php endif; ?></td><td><strong><?= h(AsistenciaReglas::fmtFaltas($resumenFaltas[$mid])) ?></strong></td></tr>
                 <?php endforeach; ?>
+                <?php if ($sumaMaterias > 0): ?>
+                    <tr><td><strong>Total acumulado (día completo + materias que suman)</strong></td><td><strong><?= h(AsistenciaReglas::fmtFaltas($totalGeneral)) ?></strong></td></tr>
+                <?php endif; ?>
                 </tbody>
             </table>
             <?php if ($hayCursoPorDia): ?>
-                <small style="color:#a5c3e8;">En los cursos con asistencia por día completo, la asistencia de cada materia se informa pero no suma al tope para quedar libre, salvo que la institución lo indique para esa materia.</small>
+                <small style="color:#a5c3e8;">En los cursos con asistencia por día completo, la asistencia de cada materia se informa pero no suma al tope para quedar libre, salvo las materias que llevan asistencia propia, que suman al total del día completo.</small>
             <?php endif; ?>
         </div>
         <?php endif; ?>
@@ -246,7 +254,8 @@ $topeMateria = 10;
 $valorHoy = [];
 $faltasTotalesMateria = [];
 $divDiaIds = AsistenciaReglas::divisionesDiaIds($pdo);                 // divisiones de cursos por día completo
-$cuentaPropia = (!$modoDia && $materiaId) ? AsistenciaReglas::materiaCuentaEnCursoCompleto($mongoDB, $materiaId) : false;
+$pesoPropio = (!$modoDia && $materiaId) ? AsistenciaReglas::pesoPropio($pdo, $materiaId) : null;   // cuánto suma al total general si lleva asistencia propia
+$cuentaPropia = $pesoPropio !== null;
 $puedeCargarDia = AsistenciaReglas::puedeCargarDiaCompleto($rol);       // solo el secretario pasa el día completo
 $puedeGuardar = $modoDia ? $puedeCargarDia : true;
 
@@ -296,7 +305,7 @@ if ($materiaId || $modoDia) {
         // Faltas que cuentan para el tope (con fracciones en el día completo; ver AsistenciaReglas::faltasPorAlumno)
         $faltasPorAlumno = AsistenciaReglas::faltasPorAlumno($pdo, $mongoDB, $aIds, $claveMateria);
         // Faltas totales de la materia, también las que no computan (cursos por día completo): se muestran igual
-        if (!$modoDia && $cuentaPropia === false && !empty($divDiaIds)) {
+        if (!$modoDia && !empty($divDiaIds)) {
             $todas = $mongoDB->selectCollection('asistencia')->aggregate([
                 ['$match' => ['materia_id' => $claveMateria, 'alumno_id' => ['$in' => $aIds], 'estado' => 'ausente']],
                 ['$group' => ['_id' => '$alumno_id', 'total' => ['$sum' => 1]]]
@@ -398,13 +407,6 @@ include __DIR__ . '/views/menu.php';
             <?php if ($puedeBloquear): ?>
                 <button type="button" class="btn-secundario" onclick="abrirModalPeriodos()">🚫 Períodos sin asistencia</button>
             <?php endif; ?>
-            <?php if (!$modoDia && $materiaId && !empty($divDiaIds) && !$esAlumno && !$esFamiliar): ?>
-            <label style="margin:0; flex-basis:100%;">
-                <input type="checkbox" id="cuentaCursoCompleto" <?= $cuentaPropia ? 'checked' : '' ?> onchange="guardarAsistenciaPropia(this)">
-                Esta materia lleva asistencia propia (cuenta para quedar libre) aunque su curso tome asistencia por día completo
-                <small style="display:block; color:#a5c3e8;">Se guarda al marcarla. La asistencia de la materia siempre la ve el alumno; si no se marca, solo se informa y no suma al tope.</small>
-            </label>
-            <?php endif; ?>
             <?php if ($esDirectivoVista && ($materiaId || $modoDia)): ?>
             <label style="margin:0; flex-basis:100%;">⚙️ Tope general de faltas<?= $modoDia ? ' del curso' : '' ?> (queda LIBRE al llegar a este número):
                 <span style="display:inline-flex; gap:0.5rem; align-items:center;">
@@ -431,9 +433,11 @@ include __DIR__ . '/views/menu.php';
 
     <?php if ($modoDia): ?>
         <div class="alerta info" style="margin-bottom:1rem;">🗓️ <strong>Asistencia por día completo.</strong> La asistencia que se carga acá vale para todo el día: cada alumno puede tener presente, ¼, ½, ¾ o 1 falta, y se suman al total.
+            <?php $pr = AsistenciaReglas::materiasPropias($pdo); if ($pr): ?><br>➕ También suman al total las faltas de las materias con asistencia propia: <?= h(implode(', ', array_map(fn($p) => $p['nombre'] . ' (×' . AsistenciaReglas::fmtFaltas($p['peso']) . ')', $pr))) ?>.<?php endif; ?>
             <?php if (!$puedeCargarDia): ?><br>🔒 Solo el <strong>secretario</strong> pasa la asistencia por día completo; vos la ves en modo lectura. Los docentes cargan la asistencia de su materia.<?php endif; ?></div>
-    <?php elseif ($materiaId && !empty($alumnosVisibles) && !$cuentaPropia && array_filter($alumnosVisibles, fn($a) => in_array((int)$a['division_id'], $divDiaIds, true))): ?>
-        <div class="alerta info" style="margin-bottom:1rem;">ℹ️ Algunos alumnos cursan en un curso con asistencia por día completo. Su asistencia en esta materia <strong>se guarda y la ve el alumno</strong>, pero por ahora no suma para quedar libre.</div>
+    <?php elseif ($materiaId && !empty($alumnosVisibles) && array_filter($alumnosVisibles, fn($a) => in_array((int)$a['division_id'], $divDiaIds, true))): ?>
+        <div class="alerta info" style="margin-bottom:1rem;">ℹ️ Algunos alumnos cursan en un curso con asistencia por día completo. Su asistencia en esta materia <strong>se guarda y la ve el alumno</strong>.
+            <?= $cuentaPropia ? 'Esta materia lleva <strong>asistencia propia</strong>: cada falta suma <strong>' . h(AsistenciaReglas::fmtFaltas((float)$pesoPropio)) . '</strong> al total acumulado del curso.' : 'No suma al total del curso.' ?></div>
     <?php endif; ?>
 
     <?php if ($materiaId || $modoDia): ?>
@@ -450,14 +454,14 @@ include __DIR__ . '/views/menu.php';
                     $tope = topeDeAlumno($aid, $topesPorAlumno, $topeMateria);
                     $clase = $esLibre ? 'libre' : ($estado === 'ausente' ? 'ausente' : 'presente');
                     // Materia de un curso por día completo (sin asistencia propia): se guarda y se muestra, pero no computa
-                    $noComputa = !$modoDia && !$cuentaPropia && in_array((int)$a['division_id'], $divDiaIds, true);
+                    $enCursoDia = !$modoDia && in_array((int)$a['division_id'], $divDiaIds, true);
                     $conClick = !$modoDia || $esLibre;   // por día completo se elige el valor con los botones ¼ ½ ¾ 1
                 ?>
                     <div class="alumno-card <?= $clase ?>" data-alumno-id="<?= $aid ?>" data-estado="<?= h($estado) ?>" data-original="<?= h($estado) ?>" data-valor="<?= $valor ?>" data-original-valor="<?= $valor ?>" data-libre="<?= $esLibre ? (isset($libresGenerales[$aid]) ? '2' : '1') : '0' ?>" <?= $conClick ? 'onclick="toggleAsistencia(this, ' . $aid . ')"' : '' ?>>
                         <div class="alumno-card-nombre"><?= h($a['apellido']) ?><br><?= h($a['nombre']) ?></div>
                         <div class="alumno-card-info">
                             <?php if ($esLibre): ?>🔒 Libre<?= isset($libresGenerales[$aid]) ? ' <small>(asistencia general)</small>' : '' ?>
-                            <?php elseif ($noComputa): ?>Faltas: <strong><?= (int)($faltasTotalesMateria[$aid] ?? 0) ?></strong> <small title="Curso por día completo: se guarda pero no suma para quedar libre">(no computa)</small>
+                            <?php elseif ($enCursoDia): ?>Faltas: <strong><?= (int)($faltasTotalesMateria[$aid] ?? 0) ?></strong> <?php if ($cuentaPropia): ?><small title="Cada falta suma este valor al total del curso">(suma <?= h(AsistenciaReglas::fmtFaltas((float)$pesoPropio)) ?> c/u al total)</small><?php else: ?><small title="Curso por día completo: se guarda pero no suma al total">(no suma)</small><?php endif; ?>
                             <?php else: ?>Faltas: <strong class="faltas-total"><?= h(AsistenciaReglas::fmtFaltas($faltas)) ?>/<?= $tope ?></strong>
                             <?php endif; ?>
                         </div>

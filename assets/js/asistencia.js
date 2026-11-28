@@ -246,21 +246,6 @@ async function guardarTopeMateria() {
     }
 }
 
-async function guardarAsistenciaPropia(chk) {
-    const fd = new FormData();
-    agregarAmbito(fd);
-    fd.append('cuenta_en_curso_completo', chk.checked ? '1' : '0');
-    const r = await fetchConSesion(API_ASIST + '?action=asistencia_propia', { method: 'POST', body: fd });
-    const d = await r.json();
-    if (d.ok) {
-        mostrarToast(chk.checked ? 'La materia lleva asistencia propia (cuenta para quedar libre)' : 'La asistencia de la materia solo se informa', 'ok');
-        setTimeout(() => location.reload(), 900);
-    } else {
-        chk.checked = !chk.checked;
-        mostrarToast(d.mensaje || 'Error', 'error');
-    }
-}
-
 let topeAlumnoId = null;
 
 function cambiarTope(alumnoId, topeActual, nombre) {

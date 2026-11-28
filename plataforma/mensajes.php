@@ -177,7 +177,7 @@ $usuarios = $stmt->fetchAll();
                                 </div>
                             <?php endif; ?>
                             <div class="burbuja-meta">
-                                <?= h($fechaMsg->format('d/m/Y')) ?> - <?= h($hora) ?>
+                                <?php if ($esMio): ?><span class="burbuja-visto" style="<?= !empty($m['leido']) ? 'color:#86efac;' : '' ?>"><?= !empty($m['leido']) ? 'Visto' : 'No visto' ?></span> - <?php endif; ?><?= h($fechaMsg->format('d/m/Y')) ?> - <?= h($hora) ?>
                                 <?php if ($editado): ?>
                                     <span class="burbuja-editado">· Mensaje editado</span>
                                 <?php endif; ?>

@@ -152,6 +152,28 @@ try {
             break;
 
         // ============================================================
+        // ALUMNOS A LOS QUE SE PUEDE ASIGNAR UNA TAREA NUEVA (materia + división/es)
+        // ============================================================
+        case 'alumnos':
+            $materiaId = (int)($_GET['materia_id'] ?? 0);
+            $divisionId = (int)($_GET['division_id'] ?? 0);
+            $todas = !empty($_GET['aplicar_todas']);
+            $año = (int)($_GET['año'] ?? 0) ?: (int)date('Y');
+            if ($todas && $yo['rol'] === 'docente') {
+                $stmt = $pdo->prepare("SELECT DISTINCT division_id FROM asignaciones_docente WHERE docente_id = ? AND materia_id = ?");
+                $stmt->execute([$yo['id'], $materiaId]);
+                $divs = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+            } else {
+                $divs = $divisionId > 0 ? [$divisionId] : [];
+            }
+            if (!$materiaId || !$divs || !Acceso::puedeCrearEn($pdo, $yo, $materiaId, $divs)) {
+                jsonResponse(['ok' => true, 'alumnos' => []]);
+            }
+            $lista = AcademicModel::alumnosDeMateriaEnDivisiones($pdo, $materiaId, $divs, $año);
+            jsonResponse(['ok' => true, 'alumnos' => array_map(fn($a) => ['id' => (int)$a['id'], 'nombre' => trim($a['apellido'] . ', ' . $a['nombre'])], $lista)]);
+            break;
+
+        // ============================================================
         // CALIFICAR ENTREGA
         // ============================================================
         case 'calificar':

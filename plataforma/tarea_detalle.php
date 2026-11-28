@@ -120,6 +120,19 @@ if ($esNueva && esDocenteOAdmin()) {
 
                 if (empty($divisionesIds)) $error = 'No hay divisiones.';
 
+                // Alumnos específicos: la lista empieza con todos marcados; los desmarcados quedan excluidos
+                $excluidos = [];
+                if (!$error) {
+                    $listados = array_values(array_unique(array_filter(array_map('intval', explode(',', (string)($_POST['alumnos_listados'] ?? ''))))));
+                    if ($listados) {
+                        $permitidos = array_map(fn($a) => (int)$a['id'], AcademicModel::alumnosDeMateriaEnDivisiones($pdo, $materiaId, $divisionesIds, $añoLectivo));
+                        $listados = array_values(array_intersect($listados, $permitidos));
+                        $incluidos = array_map('intval', (array)($_POST['alumnos_incluidos'] ?? []));
+                        $excluidos = array_values(array_diff($listados, $incluidos));
+                        if ($listados && count($excluidos) === count($listados)) $error = 'Dejá al menos un alumno marcado para esta tarea.';
+                    }
+                }
+
                 if (!$error) {
                     $mongoDB->selectCollection('tareas')->insertOne([
                         'titulo' => $titulo, 'descripcion' => $descripcion, 'docente_id' => (int)$user['id'],
@@ -128,7 +141,7 @@ if ($esNueva && esDocenteOAdmin()) {
                         'fecha_vencimiento' => $fechaMongo,
                         'permite_entrega' => true, 'tipo_entrega' => $tipoEntrega, 'archivo_id' => $archivoId,
                         'archivo_nombre' => $archivoNombre, 'vt_estado' => $vtEstado, 'fecha_creacion' => new MongoDB\BSON\UTCDateTime(),
-                    ]);
+                    ] + ($excluidos ? ['alumnos_excluidos' => $excluidos] : []));
                     redirect('/plataforma/tareas.php');
                 }
             }
@@ -172,6 +185,17 @@ if ($esNueva && esDocenteOAdmin()) {
                     <?php endforeach; ?>
                 </select>
             </label>
+            <div id="tareaAlumnosCaja" style="display:none; margin:0.75rem 0;">
+                <strong>Alumnos que reciben la tarea</strong>
+                <small style="color:#a5c3e8; display:block;">Todos vienen marcados. Si desmarcás a un alumno, la tarea no le aparece ni puede entrar a ella.</small>
+                <div style="margin:0.4rem 0; display:flex; gap:0.4rem; flex-wrap:wrap;">
+                    <button type="button" class="btn-mini" onclick="marcarAlumnosTarea(true)">Todos</button>
+                    <button type="button" class="btn-mini" onclick="marcarAlumnosTarea(false)">Ninguno</button>
+                    <span id="tareaAlumnosContador" style="color:#a5c3e8; font-size:0.85rem;"></span>
+                </div>
+                <input type="hidden" name="alumnos_listados" id="tareaAlumnosListados">
+                <div id="tareaAlumnosLista" style="max-height:16rem; overflow:auto; padding:0.5rem 0.75rem; background:rgba(255,255,255,0.04); border-radius:10px;"></div>
+            </div>
             <label>Fecha vencimiento <input type="datetime-local" name="fecha_vencimiento" required></label>
             <label>Tipo de entrega
                 <select name="tipo_entrega" required>
@@ -203,6 +227,14 @@ if (!$tarea) die('Tarea no encontrada');
 
 // Autorización: solo ven la tarea quienes pertenecen a su materia/división/institución
 $yo = Acceso::yo();
+if (Acceso::tareaNoAsignada($pdo, $yo, $tarea)) {
+    http_response_code(403);
+    include __DIR__ . '/views/header.php';
+    include __DIR__ . '/views/menu.php';
+    echo '<main class="contenido-principal"><h1>📝 Tarea</h1><div class="alerta warn">🔒 Esta tarea no está asignada a ' . ($rol === 'familiar' ? 'tu familiar' : 'vos') . '.</div><a class="btn-secundario" href="/plataforma/tareas.php">← Volver a tareas</a></main>';
+    include __DIR__ . '/views/footer.php';
+    exit;
+}
 if (!Acceso::puedeVerTarea($pdo, $yo, $tarea)) {
     http_response_code(403);
     die('No tenés acceso a esta tarea.');
@@ -307,6 +339,9 @@ $añoTarea = isset($tarea['año_lectivo']) ? (int)$tarea['año_lectivo'] : (int)
         <div class="panel-vidrio">
             <p><strong>Materia:</strong> <?= h($materiaNombre) ?></p>
             <p><strong>Divisiones:</strong> <?= h(implode(', ', $divsNombres)) ?></p>
+            <?php if ($puedoEditar && !empty($tarea['alumnos_excluidos'])): ?>
+                <p><strong>Alumnos excluidos:</strong> <?= count(Acceso::ids($tarea['alumnos_excluidos'])) ?> (no ven esta tarea)</p>
+            <?php endif; ?>
             <p><strong>Vence:</strong> <?= h($fv->format('d/m/Y H:i')) ?></p>
             <p><strong>Tipo:</strong> <?= $tarea['tipo_entrega'] === 'multimedia' ? 'Multimedia' : 'Documento' ?></p>
             <p><?= nl2br(h($tarea['descripcion'] ?? '')) ?></p>

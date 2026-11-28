@@ -4,6 +4,7 @@ require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/core/Feriados.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -85,6 +86,8 @@ if ($rol === 'alumno') {
         'año_lectivo' => $añoActivo,
     ], ['sort' => ['fecha_vencimiento' => 1], 'limit' => 500])->toArray();
 }
+
+$tareas = Acceso::filtrarTareasParaUsuario($pdo, ['id' => $userId, 'rol' => $rol], $tareas);
 
 // ============================================================
 // EVENTOS (solo del año activo)

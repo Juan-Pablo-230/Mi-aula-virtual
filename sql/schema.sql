@@ -107,6 +107,8 @@ CREATE TABLE materias (
     nombre VARCHAR(150) NOT NULL,
     orientacion_id INT NULL,
     institucion_id INT NULL,
+    asistencia_propia TINYINT(1) NOT NULL DEFAULT 0,
+    valor_falta_propia DECIMAL(4,2) NOT NULL DEFAULT 1.00,
     FOREIGN KEY (orientacion_id) REFERENCES orientaciones(id) ON DELETE SET NULL,
     CONSTRAINT fk_materias_inst FOREIGN KEY (institucion_id)
         REFERENCES instituciones(id) ON DELETE CASCADE,

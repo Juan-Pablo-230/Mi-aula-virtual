@@ -573,4 +573,24 @@ class AcademicModel {
 
         return ['ok' => true, 'procesados' => $procesados];
     }
+
+    /**
+     * Alumnos activos que cursan una materia en las divisiones dadas, en un año lectivo.
+     * @return array<int,array{id:int,nombre:string,apellido:string}> ordenados por apellido y nombre
+     */
+    public static function alumnosDeMateriaEnDivisiones(PDO $pdo, int $materiaId, array $divisionesIds, int $año): array {
+        $divisionesIds = array_values(array_unique(array_filter(array_map('intval', $divisionesIds))));
+        if ($materiaId <= 0 || !$divisionesIds) return [];
+        $ph = implode(',', array_fill(0, count($divisionesIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT u.id, u.nombre, u.apellido
+            FROM usuarios u
+            JOIN alumnos_division_historial h ON h.alumno_id = u.id AND h.activo = 1 AND h.año_lectivo = ?
+            WHERE h.division_id IN ($ph) AND u.rol = 'alumno' AND u.activo = 1
+            " . self::sqlCursaMateria('u.id', 'h.division_id', (string)$materiaId) . "
+            ORDER BY u.apellido, u.nombre
+        ");
+        $stmt->execute(array_merge([$año], $divisionesIds));
+        return $stmt->fetchAll();
+    }
 }

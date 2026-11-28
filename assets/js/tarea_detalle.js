@@ -40,6 +40,7 @@ function actualizarDivisionesTarea() {
         ).join('');
 
     if (divisionesFiltradas.length === 1) selDivision.selectedIndex = 1;
+    cargarAlumnosTarea();
 }
 
 function escapeHtml(s) {
@@ -157,4 +158,57 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+});
+
+// ============================================================
+// ALUMNOS DE LA TAREA (todos marcados por defecto)
+// ============================================================
+async function cargarAlumnosTarea() {
+    const caja = document.getElementById('tareaAlumnosCaja');
+    const lista = document.getElementById('tareaAlumnosLista');
+    if (!caja || !lista) return;
+    const materia = document.getElementById('tareaMateria')?.value || '';
+    const division = document.getElementById('tareaDivision')?.value || '';
+    const todas = document.getElementById('chkAplicarTodasTarea')?.checked ? '1' : '';
+    const año = document.querySelector('select[name="año_lectivo"]')?.value || '';
+    if (!materia || (!division && !todas)) { caja.style.display = 'none'; lista.innerHTML = ''; document.getElementById('tareaAlumnosListados').value = ''; return; }
+    try {
+        const r = await fetchConSesion('/plataforma/api/tareas_ajax.php?action=alumnos&materia_id=' + encodeURIComponent(materia)
+            + '&division_id=' + encodeURIComponent(division) + '&aplicar_todas=' + todas + '&año=' + encodeURIComponent(año));
+        const d = await r.json();
+        const alumnos = d.alumnos || [];
+        document.getElementById('tareaAlumnosListados').value = alumnos.map(a => a.id).join(',');
+        lista.innerHTML = alumnos.map(a =>
+            `<label class="label-checkbox" style="margin:0.15rem 0; display:flex; gap:0.5rem; align-items:center;">
+                <input type="checkbox" name="alumnos_incluidos[]" value="${a.id}" checked onchange="contarAlumnosTarea()">
+                <span>${escapeHtml(a.nombre)}</span></label>`).join('');
+        caja.style.display = alumnos.length ? 'block' : 'none';
+        contarAlumnosTarea();
+    } catch (err) {
+        caja.style.display = 'none';
+    }
+}
+
+function marcarAlumnosTarea(marcar) {
+    document.querySelectorAll('#tareaAlumnosLista input[type=checkbox]').forEach(c => c.checked = marcar);
+    contarAlumnosTarea();
+}
+
+function contarAlumnosTarea() {
+    const todos = document.querySelectorAll('#tareaAlumnosLista input[type=checkbox]');
+    const marc = document.querySelectorAll('#tareaAlumnosLista input[type=checkbox]:checked');
+    const c = document.getElementById('tareaAlumnosContador');
+    if (c) c.textContent = marc.length + ' de ' + todos.length + ' alumnos';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    ['tareaMateria', 'tareaDivision', 'chkAplicarTodasTarea'].forEach(id => document.getElementById(id)?.addEventListener('change', () => setTimeout(cargarAlumnosTarea, 0)));
+    document.querySelector('select[name="año_lectivo"]')?.addEventListener('change', cargarAlumnosTarea);
+    document.getElementById('btnCrearTarea')?.closest('form')?.addEventListener('submit', (e) => {
+        const lista = document.getElementById('tareaAlumnosListados')?.value;
+        if (lista && !document.querySelector('#tareaAlumnosLista input:checked')) {
+            e.preventDefault();
+            alert('Dejá al menos un alumno marcado para esta tarea.');
+        }
+    });
 });

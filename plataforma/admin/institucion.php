@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Helpers.php';
+require_once __DIR__ . '/../models/UserModel.php';
+require_once __DIR__ . '/../models/AcademicModel.php';
 
 Auth::checkRole(['madre']);
 
@@ -15,6 +17,13 @@ if (!$institucion) { header('Location: /plataforma/admin/instituciones.php'); ex
 
 $tab = $_GET['tab'] ?? 'usuarios';
 if (!in_array($tab, ['usuarios', 'importacion', 'estadisticas'])) $tab = 'usuarios';
+
+// Si falta la migración (tabla usuarios_instituciones) se avisa en vez de romper la página
+try { $pdo->query("SELECT 1 FROM usuarios_instituciones LIMIT 1"); }
+catch (PDOException $e) {
+    http_response_code(500);
+    die('<p style="font-family:sans-serif;padding:2rem;">⚠️ Falta actualizar la base de datos: ejecutá <code>sql/migracion_completa_fase5.sql</code> y volvé a intentar.</p>');
+}
 
 $usuarios = $pdo->prepare("
     SELECT u.*, (ui.usuario_id IS NOT NULL) AS es_secundario, ui.rol AS rol_aca,
@@ -149,6 +158,7 @@ $hastaEsc = h($hasta);
 <?php include __DIR__ . '/../views/header.php'; ?>
 <?php include __DIR__ . '/../views/menu.php'; ?>
 <main class="contenido-principal">
+    <?php include __DIR__ . '/../views/admin_nav.php'; ?>
     <div class="institucion-header">
         <div>
             <a class="btn-secundario" href="/plataforma/admin/instituciones.php">← Instituciones</a>
@@ -169,13 +179,14 @@ $hastaEsc = h($hasta);
 
     <?php if ($tab === 'usuarios'): ?>
         <button class="btn-primario" onclick="abrirModalCrear()">➕ Crear usuario</button>
-        <button class="btn-secundario" id="btnPasarInst" onclick="abrirModalPasarInst()" disabled>🏛️ Pasar a otra institución (<span id="contPasarInst">0</span>)</button>
+        <button class="btn-secundario" id="btnPasarInst" onclick="abrirModalPasarInst()">🏛️ Pasar a otra institución (<span id="contPasarInst">0</span>)</button>
+        <small style="color:#a5c3e8; margin-left:0.5rem;">Marcá los alumnos de la primera columna y tocá el botón.</small>
 
         <div class="panel-vidrio">
             <table class="tabla-alumnos">
                 <thead>
                     <tr>
-                        <th style="width:2.5rem;"></th>
+                        <th style="width:2.5rem;"><input type="checkbox" id="chkTodosPasar" title="Marcar todos los alumnos" onchange="document.querySelectorAll('.chk-pasar-inst').forEach(c => c.checked = this.checked); contarPasarInst();"></th>
                         <th>Apellido, Nombre</th>
                         <th>DNI</th>
                         <th>Email</th>
@@ -297,10 +308,12 @@ $hastaEsc = h($hasta);
         function contarPasarInst() {
             const n = document.querySelectorAll('.chk-pasar-inst:checked').length;
             document.getElementById('contPasarInst').textContent = n;
-            document.getElementById('btnPasarInst').disabled = n === 0;
         }
         function abrirModalPasarInst() {
-            document.getElementById('cantPasarInst').textContent = document.querySelectorAll('.chk-pasar-inst:checked').length;
+            const n = document.querySelectorAll('.chk-pasar-inst:checked').length;
+            if (n === 0) { mostrarToast('Marcá al menos un alumno para pasar a otra institución', 'error'); return; }
+            if (!document.getElementById('destinoInst').options.length || document.getElementById('destinoInst').options.length < 2) { mostrarToast('No hay otra institución a la que pasarlos', 'error'); return; }
+            document.getElementById('cantPasarInst').textContent = n;
             document.getElementById('modalPasarInst').classList.remove('oculto');
         }
         async function confirmarPasarInst() {
@@ -328,6 +341,7 @@ $hastaEsc = h($hasta);
         window.MATERIAS = <?= jsonJs($materias) ?>;
         </script>
         <script src="/assets/js/cursadas-alumno.js"></script>
+        <script>window.PUEDE_EDITAR_IDENTIDAD = false; // la madre no edita nombre, apellido ni DNI</script>
         <script src="/assets/js/institucion_usuarios.js"></script>
 
     <?php elseif ($tab === 'importacion'): ?>

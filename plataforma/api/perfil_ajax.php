@@ -18,6 +18,12 @@ if ($action === 'guardar') {
     $dni      = trim($_POST['dni'] ?? '');
     $email    = trim($_POST['email'] ?? '');
 
+    // Solo el directivo puede cambiar su nombre, apellido y DNI
+    if ((Auth::currentUser($pdo)['rol'] ?? '') !== 'directivo') {
+        $propio = UserModel::findById($pdo, $id);
+        if ($propio) { $nombre = (string)($propio['nombre'] ?? ''); $apellido = (string)$propio['apellido']; $dni = (string)$propio['dni']; }
+    }
+
     // ============================================================
     // Validaciones
     // ============================================================

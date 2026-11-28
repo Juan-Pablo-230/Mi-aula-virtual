@@ -177,9 +177,34 @@ class Acceso {
     }
 
     /** ¿Puede ver la tarea? (administra, docente de la materia, o alumno/familiar de una de sus divisiones) */
+    /**
+     * ¿El docente dejó a este alumno (o a todos los alumnos de este familiar) fuera de la tarea?
+     * La tarea guarda 'alumnos_excluidos'; sin ese campo es para todos.
+     */
+    public static function tareaNoAsignada(PDO $pdo, array $u, $tarea): bool {
+        if (!$tarea || !in_array($u['rol'], ['alumno', 'familiar'], true)) return false;
+        $excl = self::ids($tarea['alumnos_excluidos'] ?? []);
+        if (!$excl) return false;
+        $alumnos = $u['rol'] === 'alumno'
+            ? [(int)$u['id']]
+            : array_map('intval', self::lista($pdo, "SELECT alumno_id FROM familiares_alumnos WHERE familiar_id = ?", [$u['id']]));
+        if (!$alumnos) return false;
+        foreach ($alumnos as $a) if (!in_array($a, $excl, true)) return false;
+        return true;
+    }
+
+    /** Saca de un listado las tareas que el docente no asignó a este alumno/familiar. */
+    public static function filtrarTareasParaUsuario(PDO $pdo, array $u, array $tareas): array {
+        if (!in_array($u['rol'], ['alumno', 'familiar'], true)) return $tareas;
+        $out = [];
+        foreach ($tareas as $t) if (!self::tareaNoAsignada($pdo, $u, $t)) $out[] = $t;
+        return $out;
+    }
+
     public static function puedeVerTarea(PDO $pdo, array $u, $tarea): bool {
         if (!$tarea) return false;
         if (self::puedeAdministrarTarea($pdo, $u, $tarea)) return true;
+        if (self::tareaNoAsignada($pdo, $u, $tarea)) return false;
 
         $materiaId = (int)($tarea['materia_id'] ?? 0);
         if ($u['rol'] === 'docente') return self::docenteTieneMateria($pdo, $u['id'], $materiaId);

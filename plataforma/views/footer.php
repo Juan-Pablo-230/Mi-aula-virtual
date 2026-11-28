@@ -7,13 +7,13 @@
         <h3>Editar perfil</h3>
         <form id="formPerfil" enctype="multipart/form-data">
             <label>Nombre
-                <input type="text" name="nombre" value="<?= h($currentUser['nombre'] ?? '') ?>" required maxlength="100">
+                <input type="text" name="nombre" value="<?= h($currentUser['nombre'] ?? '') ?>" required maxlength="100" <?= ($currentUser['rol'] ?? '') === 'directivo' ? '' : 'readonly title="Solo dirección puede cambiar este dato"' ?>>
             </label>
             <label>Apellido
-                <input type="text" name="apellido" value="<?= h($currentUser['apellido'] ?? '') ?>" required maxlength="100">
+                <input type="text" name="apellido" value="<?= h($currentUser['apellido'] ?? '') ?>" required maxlength="100" <?= ($currentUser['rol'] ?? '') === 'directivo' ? '' : 'readonly title="Solo dirección puede cambiar este dato"' ?>>
             </label>
             <label>DNI
-                <input type="text" name="dni" value="<?= h($currentUser['dni'] ?? '') ?>" required inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12">
+                <input type="text" name="dni" value="<?= h($currentUser['dni'] ?? '') ?>" required inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" <?= ($currentUser['rol'] ?? '') === 'directivo' ? '' : 'readonly title="Solo dirección puede cambiar este dato"' ?>>
             </label>
             <label>Correo electrónico (obligatorio)
                 <input type="email" name="email" value="<?= h($currentUser['email'] ?? '') ?>" required>

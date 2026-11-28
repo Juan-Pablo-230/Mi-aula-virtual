@@ -98,6 +98,23 @@ document.getElementById('formMateria')?.addEventListener('submit', (e) => {
     submitCon('crear_materia', new FormData(form), 'Materia creada correctamente');
 });
 
+// Ciclos lectivos
+document.getElementById('formCiclo')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    if (fd.get('fecha_fin') <= fd.get('fecha_inicio')) {
+        mostrarToast('La fecha de fin debe ser posterior a la de inicio', 'error');
+        return;
+    }
+    submitCon('crear_ciclo', fd, 'Ciclo lectivo creado');
+});
+
+function activarCiclo(id) {
+    if (!confirm('¿Activar este ciclo lectivo? Pasa a ser el ciclo en curso de la institución.')) return;
+    const fd = new FormData(); fd.append('id', id);
+    submitCon('activar_ciclo', fd, 'Ciclo activado');
+}
+
 document.querySelectorAll('.form-division').forEach(f => {
     f.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -164,8 +181,10 @@ function abrirEditarCurso(id) {
 
 function cerrarEditarCurso() {
     if (ec && (ec.sucio || ecHayCambiosFormulario()) && !confirm('Hay cambios sin guardar. ¿Cerrar y descartarlos?')) return;
+    const recargar = ec && ec.recargar;
     ec = null;
     cerrarModal('modalEditarCurso');
+    if (recargar) location.reload();   // para que el resto de la pantalla muestre las divisiones nuevas
 }
 
 function ecHayCambiosFormulario() {
@@ -183,22 +202,42 @@ function ecQuitarDivision(i) {
     ecRenderDivisiones();
 }
 
-document.getElementById('formEcDivision')?.addEventListener('submit', (e) => {
+document.getElementById('formEcDivision')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!ec) return;
     const f = e.target;
     const nombre = f.nombre.value.trim().toUpperCase();
     if (!nombre) return;
+    const err = document.getElementById('ecError');
     if (ec.divs.some(d => d.nombre.toUpperCase() === nombre)) {
-        const err = document.getElementById('ecError');
         err.textContent = 'Ya existe la división ' + nombre + ' en este curso.'; err.style.display = 'block';
         return;
     }
-    document.getElementById('ecError').style.display = 'none';
-    ec.divs.push({ id: null, nombre, orientacion_id: f.orientacion_id.value ? Number(f.orientacion_id.value) : null });
-    ec.sucio = true;
-    f.reset();
-    ecRenderDivisiones();
+    err.style.display = 'none';
+    // La división se guarda en la base de datos en el momento
+    const fd = new FormData();
+    fd.append('asignacion_id', ec.id); fd.append('nombre', nombre);
+    const orientacionId = f.orientacion_id.value ? Number(f.orientacion_id.value) : null;
+    if (orientacionId) fd.append('orientacion_id', orientacionId);
+    const btn = f.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await fetchConSesion(API + '?action=crear_division', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.mensaje || 'No se pudo crear la división');
+        ec.divs.push({ id: Number(d.id), nombre, orientacion_id: orientacionId });
+        ec.recargar = true;
+        const lista = ((window.CURSOS_DATA || {}).divisionesPorAsignacion ||= {});
+        (lista[ec.id] ||= []).push({ id: Number(d.id), nombre, orientacion_id: orientacionId });
+        mostrarToast('División ' + nombre + ' creada', 'ok');
+        f.reset();
+        ecRenderDivisiones();
+    } catch (ex) {
+        if (ex.message === 'Sesión expirada') return;
+        err.textContent = ex.message; err.style.display = 'block';
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 });
 
 async function ecLlamar(accion, fd) {
@@ -242,7 +281,7 @@ document.getElementById('formEditarCurso')?.addEventListener('submit', async (e)
             await ecLlamar('crear_division', fd);
         }
         mostrarToast('Curso actualizado', 'ok');
-        ec.sucio = false;
+        ec.sucio = false; ec.recargar = false;
         setTimeout(() => location.reload(), 600);
     } catch (ex) {
         if (ex.message === 'Sesión expirada') return;
@@ -274,6 +313,10 @@ function abrirEditarMateria(payload) {
     document.getElementById('editMatId').value = m.id;
     document.getElementById('editMatNombre').value = m.nombre || '';
     document.getElementById('editMatOrientacion').value = m.orientacion_id ? String(m.orientacion_id) : '';
+    const propia = String(m.asistencia_propia) === '1';
+    document.getElementById('editMatPropia').checked = propia;
+    document.getElementById('editMatPeso').value = m.valor_falta_propia || 1;
+    document.getElementById('editMatPeso').disabled = !propia;
 
     const lista = document.getElementById('editarCursosLista');
     if (lista) {
@@ -446,3 +489,194 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ============================================================
+// TRANSFERIR ALUMNOS: asistente en pasos
+//   (pestañas por ciclo) → 1. ¿de qué división? → 2. ¿qué alumnos? → 3. ¿a dónde van?
+// ============================================================
+let ac = { asignacionId: 0, nombre: '', datos: null, año: null, divisionId: null, paso: 1, destinoId: null };
+const MOTIVOS_TRANSF = {
+    transferencia: { icono: '🔀', titulo: 'Cambio de curso', ayuda: 'Pasan a otra cursada.' },
+    promocion: { icono: '🎓', titulo: 'Pasa de año', ayuda: 'Promocionan al curso siguiente.' },
+    repite: { icono: '🔁', titulo: 'Repite', ayuda: 'Mantienen su curso en el nuevo ciclo.' },
+};
+
+async function abrirAlumnosCurso(asignacionId, nombre) {
+    ac = { asignacionId, nombre, datos: null, año: null, divisionId: null, paso: 1, destinoId: null };
+    document.getElementById('alumnosCursoTitulo').textContent = '🔀 Transferir alumnos — ' + nombre;
+    document.getElementById('modalAlumnosCurso').classList.remove('oculto');
+    document.getElementById('acCuerpo').innerHTML = '<p>Cargando…</p>';
+    try {
+        const r = await fetchConSesion(API + '?action=alumnos_curso&asignacion_id=' + asignacionId);
+        const d = await r.json();
+        if (!d.ok) { mostrarToast(d.mensaje || 'Error', 'error'); return; }
+        ac.datos = d;
+        const activo = (d.ciclos.find(c => c.activo) || {}).año;
+        ac.año = d.años.includes(activo) ? activo : (d.años[0] || null);
+        acIniciarPaso1();
+    } catch (err) {
+        if (err.message !== 'Sesión expirada') mostrarToast('Error de red: ' + err.message, 'error');
+    }
+}
+
+function acActuales() {   // alumnos que hoy cursan en el año elegido
+    return ac.datos.alumnos.filter(a => Number(a.año_lectivo) === ac.año && Number(a.activo) === 1);
+}
+function acDivisiones() {
+    const m = new Map();
+    acActuales().forEach(a => { const k = Number(a.division_id); if (!m.has(k)) m.set(k, { id: k, nombre: a.division, n: 0 }); m.get(k).n++; });
+    return [...m.values()].sort((x, y) => x.nombre.localeCompare(y.nombre));
+}
+
+function acPintarCabecera() {
+    const d = ac.datos;
+    document.getElementById('acTabs').innerHTML = d.años.map(a =>
+        `<button type="button" class="${a === ac.año ? 'btn-primario' : 'btn-secundario'}" onclick="acElegirAño(${a})">Alumnos año ${a}</button>`).join('')
+        || '<em style="color:#a5c3e8;">No hay ciclos lectivos abiertos.</em>';
+    const pasos = ['División', 'Alumnos', 'Destino'];
+    document.getElementById('acPasos').innerHTML = pasos.map((t, i) =>
+        `<span style="padding:0.25rem 0.75rem; border-radius:999px; font-size:0.8rem; ${ac.paso === i + 1 ? 'background:#38bdf8; color:#04202e; font-weight:700;' : (ac.paso > i + 1 ? 'background:rgba(56,189,248,0.25);' : 'background:rgba(255,255,255,0.08);')}">${i + 1}. ${t}</span>`).join('');
+}
+
+function acElegirAño(a) { ac.año = a; acIniciarPaso1(); }
+
+function acIniciarPaso1() {
+    ac.divisionId = null; ac.destinoId = null;
+    const divs = acDivisiones();
+    if (divs.length <= 1) {            // una sola división (o ninguna): no hace falta preguntar
+        ac.divisionId = divs[0] ? divs[0].id : null;
+        acPaso2();
+        return;
+    }
+    ac.paso = 1;
+    acPintarCabecera();
+    document.getElementById('acCuerpo').innerHTML = `
+        <h4>¿De qué división querés transferir alumnos?</h4>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:0.6rem; margin-top:0.5rem;">
+            ${divs.map(d => `<button type="button" class="btn-secundario" style="padding:1rem; text-align:center;" onclick="acElegirDivision(${d.id})">
+                <div style="font-size:1.6rem; font-weight:700;">${escapeHtml(d.nombre)}</div><small>${d.n} alumno(s)</small></button>`).join('')}
+            <button type="button" class="btn-secundario" style="padding:1rem; text-align:center;" onclick="acElegirDivision(0)">
+                <div style="font-size:1.6rem;">👥</div><small>Todas (${acActuales().length})</small></button>
+        </div>`;
+    document.getElementById('acAcciones').innerHTML = '';
+}
+
+function acElegirDivision(id) { ac.divisionId = id || null; acPaso2(); }
+
+function acPaso2() {
+    ac.paso = 2;
+    acPintarCabecera();
+    const filas = acActuales().filter(a => !ac.divisionId || Number(a.division_id) === ac.divisionId);
+    const hayVarias = acDivisiones().length > 1;
+    document.getElementById('acCuerpo').innerHTML = `
+        <h4>¿Qué alumnos querés transferir?</h4>
+        <input type="text" id="acBuscar" placeholder="🔍 Buscar por nombre o DNI" oninput="acFiltrar()" style="width:100%; margin:0.4rem 0; padding:0.5rem;">
+        <div style="max-height:40vh; overflow:auto;">
+        <table class="tabla-alumnos" style="width:100%;">
+            <thead><tr><th style="width:2.5rem;"><input type="checkbox" id="acTodos" onchange="acMarcar(this.checked)" title="Marcar todos los visibles"></th>
+                <th>Apellido, Nombre</th><th>DNI</th>${hayVarias ? '<th>División</th>' : ''}</tr></thead>
+            <tbody>${filas.length ? filas.map(a => `<tr class="ac-fila" data-txt="${escapeHtml((a.apellido + ' ' + a.nombre + ' ' + a.dni).toLowerCase())}">
+                <td><input type="checkbox" class="chk-alumno-curso" value="${a.alumno_id}" onchange="acContar()"></td>
+                <td>${escapeHtml(a.apellido + ', ' + (a.nombre || ''))}</td><td>${escapeHtml(a.dni || '')}</td>
+                ${hayVarias ? `<td>${escapeHtml(a.division)}</td>` : ''}</tr>`).join('')
+                : '<tr><td colspan="4"><em style="color:#a5c3e8;">No hay alumnos cursando en este año.</em></td></tr>'}</tbody>
+        </table></div>`;
+    document.getElementById('acAcciones').innerHTML = `
+        ${hayVarias ? '<button type="button" class="btn-secundario" onclick="acIniciarPaso1()">← Cambiar división</button>' : ''}
+        <span id="acContador" style="margin-right:auto; color:#a5c3e8;"></span>
+        <button type="button" class="btn-secundario" onclick="cerrarModal('modalAlumnosCurso')">Cerrar</button>
+        <button type="button" class="btn-primario" id="acSiguiente" onclick="acPaso3()" disabled>Siguiente →</button>`;
+    acContar();
+}
+
+function acFiltrar() {
+    const q = document.getElementById('acBuscar').value.trim().toLowerCase();
+    document.querySelectorAll('.ac-fila').forEach(tr => { tr.style.display = tr.dataset.txt.includes(q) ? '' : 'none'; });
+}
+function acMarcar(m) {
+    document.querySelectorAll('.ac-fila').forEach(tr => { if (tr.style.display !== 'none') tr.querySelector('input').checked = m; });
+    acContar();
+}
+function acContar() {
+    const n = document.querySelectorAll('.chk-alumno-curso:checked').length;
+    const c = document.getElementById('acContador'); if (c) c.textContent = n + ' seleccionado(s)';
+    const b = document.getElementById('acSiguiente'); if (b) b.disabled = n === 0;
+}
+
+function acPaso3() {
+    ac.ids = [...document.querySelectorAll('.chk-alumno-curso:checked')].map(c => c.value);
+    if (!ac.ids.length) return;
+    ac.paso = 3; ac.motivo = ac.motivo || 'transferencia';
+    acPintarCabecera();
+    const d = ac.datos;
+    const grupos = {};
+    d.destinos.forEach(x => (grupos[x.curso] ||= []).push(x));
+    document.getElementById('acCuerpo').innerHTML = `
+        <h4>¿A dónde van los ${ac.ids.length} alumno(s)?</h4>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.5rem 0;">
+            ${Object.entries(MOTIVOS_TRANSF).map(([k, m]) => `<button type="button" id="mot-${k}" class="${ac.motivo === k ? 'btn-primario' : 'btn-secundario'}" onclick="acMotivo('${k}')" title="${m.ayuda}">${m.icono} ${m.titulo}</button>`).join('')}
+        </div>
+        <div id="acDestinos" style="max-height:34vh; overflow:auto;"></div>
+        <label style="margin-top:0.5rem;">Ciclo lectivo de destino
+            <select id="acCiclo" onchange="acResumen()">${d.ciclos.map(c => `<option value="${c.id}" ${c.activo ? 'selected' : ''}>${c.año}${c.activo ? ' (activo)' : ''}</option>`).join('')}</select>
+        </label>
+        <div id="acResumen" class="alerta info" style="margin-top:0.5rem;"></div>
+        <small style="color:#a5c3e8; display:block;">El historial anterior se conserva: los alumnos y sus familiares siguen viendo todo lo que veían antes.</small>`;
+    document.getElementById('acAcciones').innerHTML = `
+        <button type="button" class="btn-secundario" onclick="acPaso2()">← Volver</button>
+        <button type="button" class="btn-primario" id="btnTransfCurso" onclick="confirmarTransferenciaCurso()">Transferir</button>`;
+    acPintarDestinos();
+}
+
+function acMotivo(k) {
+    ac.motivo = k;
+    Object.keys(MOTIVOS_TRANSF).forEach(x => { document.getElementById('mot-' + x).className = x === k ? 'btn-primario' : 'btn-secundario'; });
+    acPintarDestinos();
+}
+
+function acPintarDestinos() {
+    const caja = document.getElementById('acDestinos');
+    if (ac.motivo === 'repite') { caja.innerHTML = '<p style="color:#a5c3e8;">Se mantienen sus cursadas actuales en el nuevo ciclo.</p>'; acResumen(); return; }
+    const grupos = {};
+    ac.datos.destinos.forEach(x => (grupos[x.curso] ||= []).push(x));
+    caja.innerHTML = Object.entries(grupos).map(([curso, divs]) => `
+        <div style="margin:0.4rem 0;"><strong>${escapeHtml(curso)}</strong>
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.25rem;">
+                ${divs.map(x => `<button type="button" class="${ac.destinoId === Number(x.id) ? 'btn-primario' : 'btn-secundario'}" onclick="acElegirDestino(${x.id})">${escapeHtml(x.division)}</button>`).join('')}
+            </div></div>`).join('') || '<em>No hay cursos con divisiones.</em>';
+    acResumen();
+}
+
+function acElegirDestino(id) { ac.destinoId = Number(id); acPintarDestinos(); }
+
+function acResumen() {
+    const r = document.getElementById('acResumen'); if (!r) return;
+    const dest = ac.datos.destinos.find(x => Number(x.id) === ac.destinoId);
+    const ciclo = document.getElementById('acCiclo');
+    const año = ciclo ? ciclo.options[ciclo.selectedIndex].text : '';
+    r.textContent = ac.motivo === 'repite'
+        ? `${ac.ids.length} alumno(s) repiten y siguen en su curso — ciclo ${año}`
+        : (dest ? `${ac.ids.length} alumno(s) → ${dest.nombre} — ciclo ${año}` : 'Elegí el curso de destino');
+}
+
+async function confirmarTransferenciaCurso() {
+    if (ac.motivo !== 'repite' && !ac.destinoId) { mostrarToast('Elegí el curso de destino', 'error'); return; }
+    const fd = new FormData();
+    fd.append('asignacion_id', ac.asignacionId);
+    fd.append('motivo', ac.motivo);
+    fd.append('division_destino_id', ac.motivo === 'repite' ? '' : ac.destinoId);
+    fd.append('ciclo_destino_id', document.getElementById('acCiclo').value);
+    ac.ids.forEach(i => fd.append('alumnos_ids[]', i));
+    if (!confirm(document.getElementById('acResumen').textContent + '\n\n¿Confirmar la transferencia?')) return;
+    const btn = document.getElementById('btnTransfCurso');
+    btn.disabled = true;
+    try {
+        const r = await fetchConSesion(API + '?action=transferir_alumnos_curso', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.ok) { mostrarToast(d.procesados + ' alumno(s) transferido(s)', 'ok'); setTimeout(() => location.reload(), 800); }
+        else { mostrarToast(d.mensaje || 'Error', 'error'); btn.disabled = false; }
+    } catch (err) {
+        if (err.message !== 'Sesión expirada') mostrarToast('Error de red: ' + err.message, 'error');
+        btn.disabled = false;
+    }
+}

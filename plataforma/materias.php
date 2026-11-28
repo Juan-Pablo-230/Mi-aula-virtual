@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -13,10 +14,38 @@ $esAdmin = esAdmin();
 // ============================================================
 // MATERIAS SEGÚN ROL
 // ============================================================
-if ($rol === 'alumno') {
-    $materias = AcademicModel::materiasAlumno($pdo, (int)$user['id']);
-} elseif ($rol === 'familiar') {
-    $materias = AcademicModel::materiasDeFamiliar($pdo, (int)$user['id']);
+// Alumno / familiar: las materias dependen del AÑO LECTIVO elegido (conservan acceso a los años anteriores)
+$esAlumnoFam = in_array($rol, ['alumno', 'familiar'], true);
+$añoSel = 0; $añosMat = []; $divsAño = [];
+if ($esAlumnoFam) {
+    $alumnosVista = $rol === 'alumno' ? [(int)$user['id']] : AcademicModel::alumnosDeFamiliar($pdo, (int)$user['id']);
+    foreach ($alumnosVista as $aidV) $añosMat = array_merge($añosMat, AcademicModel::añosLectivosAlumno($pdo, $aidV));
+    $cicloAct = $miInst ? AcademicModel::cicloActivo($pdo, $miInst) : null;
+    if ($cicloAct && !in_array((int)$cicloAct['año'], $añosMat, true)) $añosMat[] = (int)$cicloAct['año'];
+    $añosMat = array_values(array_unique($añosMat)); rsort($añosMat);
+    $añoSel = (int)($_GET['año'] ?? 0);
+    if (!in_array($añoSel, $añosMat, true)) $añoSel = $cicloAct ? (int)$cicloAct['año'] : (int)($añosMat[0] ?? date('Y'));
+
+    $materias = []; $visto = [];
+    foreach ($alumnosVista as $aidV) {
+        foreach (AcademicModel::materiasAlumnoEnAño($pdo, $aidV, $añoSel) as $mv) {
+            if (!isset($visto[$mv['id']])) { $visto[$mv['id']] = 1; $materias[] = $mv; }
+        }
+        // Cursadas del año: la que sigue vigente se marca como activa
+        $stH = $pdo->prepare("SELECT h.division_id, MAX(CASE WHEN h.activo = 1 AND (h.ciclo_lectivo_id IS NULL OR cl.activo = 1) THEN 2 WHEN h.activo = 1 THEN 1 ELSE 0 END) AS activa
+            FROM alumnos_division_historial h LEFT JOIN ciclos_lectivos cl ON cl.id = h.ciclo_lectivo_id
+            WHERE h.alumno_id = ? AND h.año_lectivo = ? GROUP BY h.division_id");
+        $stH->execute([$aidV, $añoSel]);
+        foreach ($stH->fetchAll() as $hv) $divsAño[(int)$hv['division_id']] = max((int)($divsAño[(int)$hv['division_id']] ?? 0), (int)$hv['activa']);
+        $stT = $pdo->prepare("SELECT COUNT(*) FROM alumnos_division_historial WHERE alumno_id = ?");
+        $stT->execute([$aidV]);
+        if ((int)$stT->fetchColumn() === 0) { // sin historial: se usa la cursada actual
+            $stC = $pdo->prepare("SELECT division_id FROM alumnos_division WHERE alumno_id = ?");
+            $stC->execute([$aidV]);
+            foreach ($stC->fetchAll(PDO::FETCH_COLUMN) as $dv) $divsAño[(int)$dv] = 2;
+        }
+    }
+    usort($materias, fn($a, $b) => strcasecmp($a['nombre'], $b['nombre']));
 } elseif ($rol === 'docente') {
     $stmt = $pdo->prepare("SELECT DISTINCT m.id, m.nombre FROM asignaciones_docente ad JOIN materias m ON m.id = ad.materia_id WHERE ad.docente_id = ?" . sqlMateriaDeInstActiva('m.id') . " ORDER BY m.nombre");
     $stmt->execute([$user['id']]);
@@ -29,7 +58,8 @@ if ($rol === 'alumno') {
 
 $materiaIdsPermitidas = array_map('intval', array_column($materias, 'id'));
 $materiaId = (int)($_GET['id'] ?? 0);
-if ($materiaId > 0 && !in_array($materiaId, $materiaIdsPermitidas)) redirect('/plataforma/materias.php');
+if ($materiaId > 0 && !in_array($materiaId, $materiaIdsPermitidas)) redirect('/plataforma/materias.php' . ($esAlumnoFam ? '?año=' . $añoSel : ''));
+$sufAño = $esAlumnoFam ? '&año=' . $añoSel : '';
 
 // ============================================================
 // CACHE DE AUTORES
@@ -42,6 +72,23 @@ function nombreAutorMaterias(PDO $pdo, int $autorId, array &$cache): string {
     $u = $stmt->fetch();
     $cache[$autorId] = $u ? (nombreCompleto($u)) : 'Docente';
     return $cache[$autorId];
+}
+
+function etiquetaCursada(int $e): string {
+    if ($e === 2) return '<span style="color:#86efac;">● Activa</span>';
+    if ($e === 1) return '<span style="color:#93c5fd;">Pendiente de activar</span>';
+    return '<span style="color:#fbbf24;">Cursada cerrada</span>';
+}
+
+/** Alumno/familiar: deja solo las cursadas del año elegido y marca cuál sigue activa. */
+function soloCursadasDelAño(array $divs, array $divsAño): array {
+    $out = [];
+    foreach ($divs as $d) {
+        if (!isset($divsAño[(int)$d['id']])) continue;
+        $d['estadoC'] = (int)$divsAño[(int)$d['id']]; $d['activa'] = $d['estadoC'] === 2;
+        $out[] = $d;
+    }
+    return $out;
 }
 
 // ============================================================
@@ -134,6 +181,7 @@ if ($materiaId === 0) {
             }
         }
 
+        if ($esAlumnoFam) $divisiones = soloCursadasDelAño($divisiones, $divsAño);
         $materiasDivisiones[$mid] = $divisiones;
     }
     ?>
@@ -141,6 +189,16 @@ if ($materiaId === 0) {
     <?php include __DIR__ . '/views/menu.php'; ?>
     <main class="contenido-principal">
         <h1>📚 Materias</h1>
+        <?php if ($esAlumnoFam): ?>
+            <form method="get" class="panel-vidrio" style="padding:0.75rem 1rem; margin-bottom:1rem; display:flex; gap:1rem; align-items:center;">
+                <label style="margin:0;">Año lectivo:
+                    <select name="año" onchange="this.form.submit()">
+                        <?php foreach ($añosMat as $a): ?><option value="<?= (int)$a ?>" <?= $a === $añoSel ? 'selected' : '' ?>><?= (int)$a ?></option><?php endforeach; ?>
+                    </select>
+                </label>
+            </form>
+            <?php if (empty($materias)): ?><p class="alerta info">No hay materias para el año <?= (int)$añoSel ?>.</p><?php endif; ?>
+        <?php endif; ?>
         <div class="grid-materias">
             <?php foreach ($materias as $m):
                 $mid = (int)$m['id'];
@@ -151,11 +209,11 @@ if ($materiaId === 0) {
                    class="panel-vidrio materia-item-link"
                    data-materia-id="<?= $mid ?>"
                    data-multiples="<?= $tieneMultiples ? '1' : '0' ?>"
-                   data-divisiones="<?= h(json_encode($divs)) ?>">
+                   data-divisiones="<?= h(json_encode($divs)) ?>" data-año="<?= (int)$añoSel ?>">
                     <div class="materia-item-icono">📖</div>
                     <h3><?= h($m['nombre']) ?></h3>
                     <?php if (count($divs) === 1): ?>
-                        <small style="color:#a5c3e8;"><?= h($divs[0]['curso'] . ' ' . $divs[0]['division']) ?></small>
+                        <small style="color:#a5c3e8;"><?= h($divs[0]['curso'] . ' ' . $divs[0]['division']) ?><?php if ($esAlumnoFam): ?> · <?= etiquetaCursada((int)($divs[0]['estadoC'] ?? 0)) ?><?php endif; ?></small>
                     <?php elseif (count($divs) > 1): ?>
                         <small style="color:#a5c3e8;"><?= count($divs) ?> cursadas disponibles</small>
                     <?php else: ?>
@@ -188,13 +246,14 @@ if ($materiaId === 0) {
                 const multiples = this.dataset.multiples === '1';
                 let divisiones = [];
                 try { divisiones = JSON.parse(this.dataset.divisiones || '[]'); } catch (err) {}
+                window.AÑO_SEL = this.dataset['año'] || '';
                 abrirMateria(materiaId, multiples, divisiones);
             });
         });
     });
     function abrirMateria(materiaId, multiples, divisiones) {
         if (!multiples || !divisiones || divisiones.length === 0) {
-            const url = window.MATERIAS_URL_BASE + '?id=' + materiaId;
+            const url = window.MATERIAS_URL_BASE + '?id=' + materiaId + (window.AÑO_SEL && window.AÑO_SEL !== '0' ? '&año=' + window.AÑO_SEL : '');
             window.location.href = divisiones && divisiones.length === 1 ? url + '&division_id=' + divisiones[0].id : url;
             return;
         }
@@ -205,7 +264,8 @@ if ($materiaId === 0) {
                     style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; text-align:left; width:100%; cursor:pointer;">
                 <span style="font-size:1.2rem;">🏫</span>
                 <span>
-                    <strong style="display:block; color:#fff;">${escapeHtml(d.curso)} ${escapeHtml(d.division)}</strong>
+                    <strong style="display:block; color:#fff;">${escapeHtml(d.curso)} ${escapeHtml(d.division)}
+                        ${d.estadoC === 2 ? '<span style="color:#86efac; font-size:0.8rem;">● Activa</span>' : (d.estadoC === 1 ? '<span style="color:#93c5fd; font-size:0.8rem;">Pendiente de activar</span>' : (d.estadoC === 0 ? '<span style="color:#fbbf24; font-size:0.8rem;">Cursada cerrada</span>' : ''))}</strong>
                     <small style="color:#a5c3e8;">${escapeHtml(d.nivel)}</small>
                 </span>
             </button>
@@ -214,7 +274,7 @@ if ($materiaId === 0) {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                window.location.href = window.MATERIAS_URL_BASE + '?id=' + this.dataset.materiaId + '&division_id=' + this.dataset.divisionId;
+                window.location.href = window.MATERIAS_URL_BASE + '?id=' + this.dataset.materiaId + '&division_id=' + this.dataset.divisionId + (window.AÑO_SEL && window.AÑO_SEL !== '0' ? '&año=' + window.AÑO_SEL : '');
             });
         });
         document.getElementById('modalCursada').classList.remove('oculto');
@@ -300,6 +360,7 @@ if (!empty($cursosIds)) {
     }
 }
 
+if ($esAlumnoFam) $divisionesTodas = soloCursadasDelAño($divisionesTodas, $divsAño);
 $divisionSel = (int)($_GET['division_id'] ?? 0);
 $divisionesIds = array_map('intval', array_column($divisionesTodas, 'id'));
 if ($divisionSel <= 0 || !in_array($divisionSel, $divisionesIds)) {
@@ -322,6 +383,7 @@ foreach ($divisionesVisibles as $div) {
     $filtroP = ['materia_id' => $materiaId, '$or' => [['divisiones_ids' => $div['id']], ['divisiones_ids' => ['$in' => [$div['id']]]]]];
     $publicaciones = $mongoPublicaciones->find($filtroP, ['sort' => ['fecha' => -1], 'limit' => 30])->toArray();
     $tareas = $mongoDB->selectCollection('tareas')->find(['materia_id' => $materiaId, 'divisiones_ids' => $div['id']], ['sort' => ['fecha_vencimiento' => -1], 'limit' => 30])->toArray();
+    $tareas = Acceso::filtrarTareasParaUsuario($pdo, ['id' => (int)$user['id'], 'rol' => $rol], $tareas);
     $filtroB = ['materia_id' => $materiaId, '$or' => [['division_id' => null], ['division_id' => (int)$div['id']]]];
     $bibliografia = $mongoBibliografia->find($filtroB, ['sort' => ['fecha' => -1], 'limit' => 30])->toArray();
     $archivoIds = []; foreach ($bibliografia as $b) if (!empty($b['archivo_id'])) $archivoIds[] = $b['archivo_id'];
@@ -334,7 +396,7 @@ foreach ($divisionesVisibles as $div) {
 <?php include __DIR__ . '/views/menu.php'; ?>
 <main class="contenido-principal">
     <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;">
-        <a href="/plataforma/materias.php" class="btn-secundario">← Volver</a>
+        <a href="/plataforma/materias.php<?= $esAlumnoFam ? '?año=' . (int)$añoSel : '' ?>" class="btn-secundario">← Volver</a>
         <h1 style="margin:0;">📖 <?= h($materia['nombre']) ?></h1>
     </div>
 
@@ -343,10 +405,11 @@ foreach ($divisionesVisibles as $div) {
             <form method="get" style="display:flex; gap:1rem; align-items:center;">
                 <input type="hidden" name="id" value="<?= $materiaId ?>">
                 <input type="hidden" name="tab" value="<?= h($tab) ?>">
+                <?php if ($esAlumnoFam): ?><input type="hidden" name="año" value="<?= (int)$añoSel ?>"><?php endif; ?>
                 <label style="margin:0;">División:
                     <select name="division_id" onchange="this.form.submit()">
                         <?php foreach ($divisionesTodas as $d): ?>
-                            <option value="<?= (int)$d['id'] ?>" <?= $d['id'] == $divisionSel ? 'selected' : '' ?>><?= h($d['curso'] . ' ' . $d['division']) ?></option>
+                            <option value="<?= (int)$d['id'] ?>" <?= $d['id'] == $divisionSel ? 'selected' : '' ?>><?= h($d['curso'] . ' ' . $d['division']) ?><?= $esAlumnoFam ? ' — ' . strip_tags(etiquetaCursada((int)($d['estadoC'] ?? 0))) : '' ?></option>
                         <?php endforeach; ?>
                     </select>
                 </label>
@@ -355,9 +418,9 @@ foreach ($divisionesVisibles as $div) {
     <?php endif; ?>
 
     <nav class="admin-nav">
-        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=publicaciones" class="admin-nav-item <?= $tab === 'publicaciones' ? 'activo' : '' ?>">📰 Publicaciones</a>
-        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=tareas" class="admin-nav-item <?= $tab === 'tareas' ? 'activo' : '' ?>">📝 Tareas</a>
-        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=bibliografia" class="admin-nav-item <?= $tab === 'bibliografia' ? 'activo' : '' ?>">📚 Bibliografía</a>
+        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=publicaciones<?= $sufAño ?>" class="admin-nav-item <?= $tab === 'publicaciones' ? 'activo' : '' ?>">📰 Publicaciones</a>
+        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=tareas<?= $sufAño ?>" class="admin-nav-item <?= $tab === 'tareas' ? 'activo' : '' ?>">📝 Tareas</a>
+        <a href="?id=<?= $materiaId ?>&division_id=<?= $divisionSel ?>&tab=bibliografia<?= $sufAño ?>" class="admin-nav-item <?= $tab === 'bibliografia' ? 'activo' : '' ?>">📚 Bibliografía</a>
     </nav>
 
     <?php if (empty($datosDivisiones)): ?>
@@ -366,7 +429,7 @@ foreach ($divisionesVisibles as $div) {
         <?php foreach ($datosDivisiones as $datos): $div = $datos['div']; ?>
             <section class="panel-vidrio" style="margin-bottom:1.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                    <h2 style="margin:0;">🏫 <?= h($div['curso'] . ' ' . $div['division']) ?></h2>
+                    <h2 style="margin:0;">🏫 <?= h($div['curso'] . ' ' . $div['division']) ?><?php if ($esAlumnoFam): ?> <small style="font-size:0.8rem;"><?= etiquetaCursada((int)($div['estadoC'] ?? 0)) ?></small><?php endif; ?></h2>
                 </div>
 
                 <?php if ($tab === 'publicaciones'): ?>
@@ -449,7 +512,19 @@ foreach ($divisionesVisibles as $div) {
             <input type="hidden" name="pub_id" id="editPubMatId">
             <label>Título <input type="text" name="titulo" id="editPubMatTitulo" maxlength="200" required></label>
             <label>Contenido <textarea name="contenido" id="editPubMatContenido" rows="5"></textarea></label>
-            <label>Año lectivo <input type="number" name="año_lectivo" id="editPubMatAño" min="2020" max="2100" required></label>
+            <label>Año lectivo
+                <select name="año_lectivo" id="editPubMatAño" required>
+                    <?php
+                    $añosEdicion = [];
+                    if (!empty($miInst)) {
+                        $stA = $pdo->prepare("SELECT DISTINCT año FROM ciclos_lectivos WHERE institucion_id = ? ORDER BY año DESC");
+                        $stA->execute([$miInst]);
+                        $añosEdicion = array_map('intval', $stA->fetchAll(PDO::FETCH_COLUMN));
+                    }
+                    if (empty($añosEdicion)) $añosEdicion = [(int)date('Y')];
+                    foreach ($añosEdicion as $aE): ?><option value="<?= $aE ?>"><?= $aE ?></option><?php endforeach; ?>
+                </select>
+            </label>
             <div id="editPubMatError" class="alerta danger" style="display:none;"></div>
             <div class="modal-acciones">
                 <button type="button" class="btn-secundario" onclick="cerrarModal('modalEditarPubMat')">Cancelar</button>
@@ -464,7 +539,10 @@ function abrirEditarPubMat(pub) {
     document.getElementById('editPubMatId').value = pub.id;
     document.getElementById('editPubMatTitulo').value = pub.titulo || '';
     document.getElementById('editPubMatContenido').value = pub.contenido || '';
-    document.getElementById('editPubMatAño').value = pub.año_lectivo || new Date().getFullYear();
+    const selAñoMat = document.getElementById('editPubMatAño');
+    const añoPubMat = String(pub.año_lectivo || new Date().getFullYear());
+    if (![...selAñoMat.options].some(o => o.value === añoPubMat)) selAñoMat.add(new Option(añoPubMat, añoPubMat));
+    selAñoMat.value = añoPubMat;
     document.getElementById('editPubMatError').style.display = 'none';
     document.getElementById('btnGuardarEditPubMat').disabled = false;
     document.getElementById('btnGuardarEditPubMat').textContent = 'Guardar cambios';

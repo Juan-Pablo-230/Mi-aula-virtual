@@ -422,7 +422,11 @@ foreach ($pubsRaw as $p) {
             <input type="hidden" name="pub_id" id="editPubId">
             <label>Título <input type="text" name="titulo" id="editPubTitulo" maxlength="200" required></label>
             <label>Contenido <textarea name="contenido" id="editPubContenido" rows="5"></textarea></label>
-            <label>Año lectivo <input type="number" name="año_lectivo" id="editPubAño" min="2020" max="2100" required></label>
+            <label>Año lectivo
+                <select name="año_lectivo" id="editPubAño" required>
+                    <?php foreach ($añosDisponibles as $a): ?><option value="<?= (int)$a ?>"><?= (int)$a ?></option><?php endforeach; ?>
+                </select>
+            </label>
             <div id="editPubError" class="alerta danger" style="display:none;"></div>
             <div class="modal-acciones">
                 <button type="button" class="btn-secundario" onclick="cerrarModal('modalEditarPub')">Cancelar</button>

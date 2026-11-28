@@ -256,6 +256,14 @@ try {
             $email    = trim($_POST['email'] ?? '');
             $rol      = $_POST['rol'] ?? '';
             $activo   = $_POST['activo'] ?? '1';
+            // Solo el directivo puede cambiar nombre, apellido y DNI: para el resto se conservan los datos guardados
+            if ((Auth::currentUser($pdo)['rol'] ?? '') !== 'directivo') {
+                $stIdent = $pdo->prepare("SELECT nombre, apellido, dni FROM usuarios WHERE id = ?");
+                $stIdent->execute([$id]);
+                $ident = $stIdent->fetch();
+                if (!$ident) jsonResponse(['ok' => false, 'mensaje' => 'Usuario no encontrado'], 404);
+                $nombre = (string)($ident['nombre'] ?? ''); $apellido = (string)$ident['apellido']; $dni = (string)$ident['dni'];
+            }
             // El rol no se puede cambiar al editar: se toma siempre el que ya tiene el usuario
             if ($esMadre) {
                 $stRol = $pdo->prepare("SELECT rol FROM usuarios WHERE id = ?");

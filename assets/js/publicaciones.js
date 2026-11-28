@@ -219,7 +219,10 @@ function abrirEditarPub(pub) {
     document.getElementById('editPubId').value = pub.id;
     document.getElementById('editPubTitulo').value = pub.titulo || '';
     document.getElementById('editPubContenido').value = pub.contenido || '';
-    document.getElementById('editPubAño').value = pub.año_lectivo || new Date().getFullYear();
+    const selAño = document.getElementById('editPubAño');
+    const añoPub = String(pub.año_lectivo || new Date().getFullYear());
+    if (![...selAño.options].some(o => o.value === añoPub)) selAño.add(new Option(añoPub, añoPub));   // año de la publicación aunque ya no figure entre los ciclos
+    selAño.value = añoPub;
     document.getElementById('editPubError').style.display = 'none';
     document.getElementById('btnGuardarEditPub').disabled = false;
     document.getElementById('btnGuardarEditPub').textContent = 'Guardar cambios';

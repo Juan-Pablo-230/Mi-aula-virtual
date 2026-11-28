@@ -572,6 +572,18 @@ function actualizarAsignacionForm() {
 
 
 // Personal que trabaja en varias instituciones: sus datos personales los gestiona su institución principal.
+// Solo el directivo puede cambiar nombre, apellido y DNI de un usuario existente
+window.PUEDE_EDITAR_IDENTIDAD = <?= (($currentUser['rol'] ?? '') === 'directivo') ? 'true' : 'false' ?>;
+function bloquearIdentidad(esEdicion) {
+    const bloquear = esEdicion && !window.PUEDE_EDITAR_IDENTIDAD;
+    ['userNombre', 'userApellido', 'userDni'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (bloquear) { el.readOnly = true; el.title = 'Solo dirección puede cambiar este dato'; }
+        else if (!el.dataset.bloqSec) { el.title = ''; }
+    });
+}
+
 function bloquearDatosPersonales(bloquear) {
     ['userNombre', 'userApellido', 'userDni', 'userEmail'].forEach(id => { const el = document.getElementById(id); if (el) el.readOnly = bloquear; });
     const act = document.getElementById('userActivo'); if (act) act.disabled = bloquear;
@@ -625,6 +637,7 @@ function abrirModalCrear(rolInicial) {
     cursadasActuales = [];
     configurarRolSelect(rolInicial || '', false);
     bloquearDatosPersonales(false);
+    bloquearIdentidad(false);
     if (rolInicial) actualizarAsignacionForm();
     document.getElementById('modalUser').classList.remove('oculto');
 }
@@ -638,6 +651,7 @@ function abrirEditar(u, asigs, divId) {
     document.getElementById('userEmail').value = u.email || '';
     configurarRolSelect(u.rol, true);
     bloquearDatosPersonales(Number(u.es_secundario) === 1);
+    bloquearIdentidad(true);
     document.getElementById('userNombre').required = u.rol !== 'familiar';
     document.getElementById('campoPasswordInfo').style.display = 'none';
     document.getElementById('campoActivo').style.display = 'block';

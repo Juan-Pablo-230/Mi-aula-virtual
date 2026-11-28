@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/Helpers.php';
 require_once __DIR__ . '/models/AcademicModel.php';
+require_once __DIR__ . '/core/Acceso.php';
 
 Auth::checkRole(ROLES_ALL);
 $user = Auth::currentUser($pdo);
@@ -79,6 +80,8 @@ if ($rol === 'docente') {
 }
 
 $tareasRaw = $mongoDB->selectCollection('tareas')->find($filtro, ['sort' => ['fecha_vencimiento' => -1], 'limit' => 200])->toArray();
+// Las tareas que el docente no asignó a este alumno no aparecen
+$tareasRaw = Acceso::filtrarTareasParaUsuario($pdo, ['id' => (int)$user['id'], 'rol' => $rol], $tareasRaw);
 
 $tareas = [];
 foreach ($tareasRaw as $t) {
@@ -93,7 +96,7 @@ foreach ($tareasRaw as $t) {
         $placeholders = implode(',', array_fill(0, count($divsIds), '?'));
         $stmt = $pdo->prepare("SELECT d.nombre AS division, a.nombre AS curso FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id WHERE d.id IN ($placeholders)");
         $stmt->execute($divsIds);
-        foreach ($stmt as $d) $divsNombres[] = $d['curso'] . ' ' . $d['nombre'];
+        foreach ($stmt as $d) $divsNombres[] = $d['curso'] . ' ' . $d['division'];
     }
     $t['materia_nombre'] = $materiaNombre;
     $t['divisiones_nombres'] = $divsNombres;

@@ -35,6 +35,14 @@ function guardarAsignacionesMateria(PDO $pdo, int $materiaId, array $asignacione
     AcademicModel::sumarMateriaNuevaAParciales($pdo, $materiaId);
 }
 
+/** Asistencia propia de la materia en cursos por día completo: [0|1, cuánto suma cada falta (0,25 a 10)] */
+function datosAsistenciaPropia(): array {
+    $propia = !empty($_POST['asistencia_propia']) ? 1 : 0;
+    $v = round((float)str_replace(',', '.', (string)($_POST['valor_falta_propia'] ?? '1')), 2);
+    if ($v < 0.25 || $v > 10) $v = 1.0;
+    return [$propia, $v];
+}
+
 try {
     switch ($action) {
 
@@ -125,8 +133,9 @@ try {
             }
 
             $pdo->beginTransaction();
-            $pdo->prepare("INSERT INTO materias (nombre, orientacion_id, institucion_id) VALUES (?, ?, ?)")
-                ->execute([$nombre, $orientacionId, $miInst]);
+            [$propia, $valorPropia] = datosAsistenciaPropia();
+            $pdo->prepare("INSERT INTO materias (nombre, orientacion_id, institucion_id, asistencia_propia, valor_falta_propia) VALUES (?, ?, ?, ?, ?)")
+                ->execute([$nombre, $orientacionId, $miInst, $propia, $valorPropia]);
             $mid = (int)$pdo->lastInsertId();
             guardarAsignacionesMateria($pdo, $mid, $asignacionesIds, $miInst);
             $pdo->commit();
@@ -165,8 +174,9 @@ try {
 
             $pdo->beginTransaction();
 
-            $pdo->prepare("UPDATE materias SET nombre = ?, orientacion_id = ? WHERE id = ?")
-                ->execute([$nombre, $orientacionId, $id]);
+            [$propia, $valorPropia] = datosAsistenciaPropia();
+            $pdo->prepare("UPDATE materias SET nombre = ?, orientacion_id = ?, asistencia_propia = ?, valor_falta_propia = ? WHERE id = ?")
+                ->execute([$nombre, $orientacionId, $propia, $valorPropia, $id]);
             guardarAsignacionesMateria($pdo, $id, $asignacionesIds, $miInst);
 
             $stmt = $pdo->prepare("
@@ -219,7 +229,7 @@ try {
                 if ($e->getCode() == 23000) jsonResponse(['ok' => false, 'mensaje' => 'Ya existe esa división en este curso'], 400);
                 throw $e;
             }
-            jsonResponse(['ok' => true]);
+            jsonResponse(['ok' => true, 'id' => (int)$pdo->lastInsertId()]);
             break;
 
         case 'eliminar_asignacion':
@@ -262,11 +272,103 @@ try {
             $fin = $_POST['fecha_fin'] ?? '';
             $activar = !empty($_POST['activar']);
             if (!$año || !$inicio || !$fin) jsonResponse(['ok' => false, 'mensaje' => 'Faltan datos'], 400);
+            if ($año < 2000 || $año > 2100 || !strtotime($inicio) || !strtotime($fin) || $fin <= $inicio) {
+                jsonResponse(['ok' => false, 'mensaje' => 'Revisá las fechas: el fin debe ser posterior al inicio'], 400);
+            }
             $stmt = $pdo->prepare("SELECT id FROM ciclos_lectivos WHERE institucion_id = ? AND año = ?");
             $stmt->execute([$miInst, $año]);
             if ($stmt->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Ya existe un ciclo para ese año'], 400);
             AcademicModel::crearCiclo($pdo, $miInst, $año, $inicio, $fin, $activar);
             jsonResponse(['ok' => true]);
+            break;
+
+        // ============================================================
+        // ALUMNOS DE UN CURSO por año lectivo + transferencia a otra cursada
+        // ============================================================
+        case 'alumnos_curso':
+            $asigId = (int)($_GET['asignacion_id'] ?? 0);
+            $st = $pdo->prepare("SELECT id FROM asignaciones WHERE id = ? AND institucion_id = ?");
+            $st->execute([$asigId, $miInst]);
+            if (!$st->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Curso no encontrado'], 404);
+
+            $st = $pdo->prepare("
+                SELECT h.alumno_id, h.año_lectivo, h.activo, h.estado, d.id AS division_id, d.nombre AS division,
+                       u.nombre, u.apellido, u.dni
+                FROM alumnos_division_historial h
+                JOIN divisiones d ON d.id = h.division_id
+                JOIN usuarios u ON u.id = h.alumno_id
+                WHERE d.asignacion_id = ?
+                ORDER BY h.año_lectivo DESC, u.apellido, u.nombre
+            ");
+            $st->execute([$asigId]);
+            $alumnos = $st->fetchAll();
+
+            // Solo ciclos abiertos: los años cerrados (ciclo no activo y ya finalizado) no aparecen
+            $ciclos = array_values(array_filter(AcademicModel::ciclosLectivos($pdo, $miInst),
+                fn($c) => (int)$c['activo'] === 1 || $c['fecha_fin'] >= date('Y-m-d')));
+            $añosAbiertos = array_map(fn($c) => (int)$c['año'], $ciclos);
+            $alumnos = array_values(array_filter($alumnos, fn($a) => in_array((int)$a['año_lectivo'], $añosAbiertos, true)));
+            $años = array_values(array_unique($añosAbiertos));
+            rsort($años);
+
+            $st = $pdo->prepare("
+                SELECT d.id, d.nombre AS division, a.id AS asignacion_id, a.nombre AS curso, CONCAT(a.nombre, ' — ', d.nombre) AS nombre
+                FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id
+                WHERE a.institucion_id = ? ORDER BY a.nombre, d.nombre
+            ");
+            $st->execute([$miInst]);
+            jsonResponse([
+                'ok' => true,
+                'años' => $años,
+                'alumnos' => $alumnos,
+                'destinos' => $st->fetchAll(),
+                'ciclos' => array_map(fn($c) => ['id' => (int)$c['id'], 'año' => (int)$c['año'], 'activo' => (int)$c['activo']], $ciclos),
+            ]);
+            break;
+
+        case 'transferir_alumnos_curso':
+            $asigId = (int)($_POST['asignacion_id'] ?? 0);
+            $motivo = $_POST['motivo'] ?? 'transferencia';
+            $divDestino = (int)($_POST['division_destino_id'] ?? 0);
+            $cicloDestino = (int)($_POST['ciclo_destino_id'] ?? 0);
+            $ids = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['alumnos_ids'] ?? [])))));
+            if (!$ids) jsonResponse(['ok' => false, 'mensaje' => 'Seleccioná al menos un alumno'], 400);
+            if (!in_array($motivo, ['promocion', 'repite', 'transferencia'], true)) jsonResponse(['ok' => false, 'mensaje' => 'Motivo inválido'], 400);
+
+            $st = $pdo->prepare("SELECT id FROM asignaciones WHERE id = ? AND institucion_id = ?");
+            $st->execute([$asigId, $miInst]);
+            if (!$st->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Curso no encontrado'], 404);
+            $st = $pdo->prepare("SELECT 1 FROM ciclos_lectivos WHERE id = ? AND institucion_id = ?");
+            $st->execute([$cicloDestino, $miInst]);
+            if (!$st->fetchColumn()) jsonResponse(['ok' => false, 'mensaje' => 'Elegí el ciclo lectivo de destino'], 400);
+            $st = $pdo->prepare("SELECT 1 FROM divisiones d JOIN asignaciones a ON a.id = d.asignacion_id WHERE d.id = ? AND a.institucion_id = ?");
+            $st->execute([$divDestino, $miInst]);
+            if (!$st->fetchColumn() && $motivo !== 'repite') jsonResponse(['ok' => false, 'mensaje' => 'Elegí el curso de destino'], 400);
+            if ($motivo === 'repite' && !$divDestino) {
+                $st = $pdo->prepare("SELECT id FROM divisiones WHERE asignacion_id = ? ORDER BY id LIMIT 1");
+                $st->execute([$asigId]);
+                $divDestino = (int)$st->fetchColumn();   // en 'repite' se mantienen sus cursadas actuales
+            }
+
+            // Solo alumnos que hoy cursan en ese curso
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $st = $pdo->prepare("
+                SELECT DISTINCT h.alumno_id FROM alumnos_division_historial h
+                JOIN divisiones d ON d.id = h.division_id
+                WHERE d.asignacion_id = ? AND h.activo = 1 AND h.alumno_id IN ($ph)
+            ");
+            $st->execute(array_merge([$asigId], $ids));
+            $validos = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+            if (!$validos) jsonResponse(['ok' => false, 'mensaje' => 'Ninguno de los alumnos cursa actualmente en este curso'], 400);
+
+            $pdo->beginTransaction();
+            try {
+                // El historial anterior se conserva: el alumno sigue viendo lo que veía antes
+                $r = AcademicModel::transferirAlumnos($pdo, $validos, $motivo, $divDestino, $cicloDestino, date('Y-m-d'));
+                if (!$r['ok']) { $pdo->rollBack(); jsonResponse(['ok' => false, 'mensaje' => $r['mensaje']], 400); }
+                $pdo->commit();
+                jsonResponse(['ok' => true, 'procesados' => $r['procesados']]);
+            } catch (Throwable $e) { $pdo->rollBack(); throw $e; }
             break;
 
         case 'activar_ciclo':
